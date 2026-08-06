@@ -1,0 +1,11 @@
+{
+  "name": "rentalsysttem-root",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "concurrently \"bun --cwd backend dev\" \"bun --cwd frontend dev\"",
+    "install:all": "bun --cwd frontend install && bun --cwd backend install"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.4"
+  }
+}
