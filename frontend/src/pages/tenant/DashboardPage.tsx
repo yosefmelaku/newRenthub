@@ -1,7 +1,140 @@
-import React, { useState } from 'react';
-import { Calendar, CreditCard, Receipt, FileText, Compass, AlertCircle, RefreshCw, Star, MapPin, ChevronDown, ChevronUp, Bed, Bath, Sparkles, Building2, Wrench, MessageSquareText, LayoutDashboard, User } from 'lucide-react';
-import { Sidebar, SidebarItem } from '../../components/Sidebar';
-import { AppUser, Booking, PropertyListing } from '../../types';
+import React, { useState, useEffect } from 'react';
+import { Calendar, CreditCard, Wrench, MessageSquareText, LayoutDashboard, User, Building2, ChevronDown, CheckCircle2, Clock, AlertCircle, Send } from 'lucide-react';
+import { Sidebar, type SidebarItem } from '../../components/Sidebar';
+import type { AppUser, Booking, PropertyListing } from '../../types';
+
+const API_URL = 'http://localhost:5000/api';
+
+type MReqStatus = 'pending' | 'in_progress' | 'completed';
+interface MReq { id: string | number; title: string; description: string; status: MReqStatus; created_at?: string; }
+
+const statusStyle: Record<MReqStatus, { label: string; cls: string; icon: React.ReactNode }> = {
+  pending:     { label: 'Pending',     cls: 'bg-amber-50 text-amber-700 border-amber-200',   icon: <Clock className="h-3.5 w-3.5" /> },
+  in_progress: { label: 'In Progress', cls: 'bg-blue-50 text-blue-700 border-blue-200',      icon: <AlertCircle className="h-3.5 w-3.5" /> },
+  completed:   { label: 'Completed',   cls: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: <CheckCircle2 className="h-3.5 w-3.5" /> },
+};
+
+const TenantMaintenanceTab: React.FC<{ user: AppUser }> = ({ user }) => {
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [myRequests, setMyRequests] = useState<MReq[]>([]);
+
+  const fetchMyRequests = async () => {
+    try {
+      const res = await fetch(`${API_URL}/maintenance`);
+      if (res.ok) {
+        const all: MReq[] = await res.json();
+        // Show only this tenant's requests (filter by renter_id field if available, else show all)
+        setMyRequests(all);
+      }
+    } catch { /* silent */ }
+  };
+
+  useEffect(() => { fetchMyRequests(); }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim() || !description.trim()) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch(`${API_URL}/maintenance`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: title.trim(),
+          description: description.trim(),
+          property_id: null,
+          status: 'pending',
+          viewable_by: 'owner',
+          renter_id: user.email,
+          renter_name: user.name,
+        }),
+      });
+      if (res.ok) {
+        setTitle('');
+        setDescription('');
+        setSubmitted(true);
+        setTimeout(() => setSubmitted(false), 4000);
+        fetchMyRequests();
+      }
+    } catch { /* silent */ } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="animate-fadeIn space-y-6">
+      {/* Submit Form */}
+      <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm space-y-4">
+        <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+          <Wrench className="h-5 w-5 text-amber-500" /> Submit Maintenance Request
+        </h3>
+        <p className="text-sm text-gray-500">Your request will be sent directly to the property owner.</p>
+
+        {submitted && (
+          <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded-xl text-sm font-semibold">
+            <CheckCircle2 className="h-4 w-4" /> Request sent! The owner has been notified.
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div>
+            <label className="block text-xs font-bold text-gray-500 mb-1 uppercase tracking-wider">Issue Title</label>
+            <input
+              type="text" required
+              placeholder="e.g. Leaking faucet in bathroom"
+              value={title} onChange={e => setTitle(e.target.value)}
+              className="w-full border border-gray-200 rounded-xl p-3 text-sm focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-gray-500 mb-1 uppercase tracking-wider">Description</label>
+            <textarea
+              required rows={3}
+              placeholder="Describe the problem in detail..."
+              value={description} onChange={e => setDescription(e.target.value)}
+              className="w-full border border-gray-200 rounded-xl p-3 text-sm focus:outline-none focus:border-emerald-500 resize-none"
+            />
+          </div>
+          <button
+            type="submit" disabled={submitting || !title.trim() || !description.trim()}
+            className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl text-sm transition"
+          >
+            <Send className="h-4 w-4" />
+            {submitting ? 'Sending...' : 'Send Request to Owner'}
+          </button>
+        </form>
+      </div>
+
+      {/* My Tickets */}
+      <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm space-y-3">
+        <h4 className="font-bold text-gray-800">My Tickets ({myRequests.length})</h4>
+        {myRequests.length === 0 ? (
+          <p className="text-sm text-gray-400">No requests submitted yet.</p>
+        ) : (
+          <div className="space-y-3">
+            {myRequests.map(r => {
+              const s = statusStyle[r.status] ?? statusStyle.pending;
+              return (
+                <div key={r.id} className="flex items-start justify-between gap-3 border border-gray-100 rounded-xl p-4">
+                  <div className="space-y-1 min-w-0">
+                    <p className="font-semibold text-sm text-gray-900 truncate">{r.title}</p>
+                    <p className="text-xs text-gray-500 line-clamp-2">{r.description}</p>
+                  </div>
+                  <span className={`flex items-center gap-1 shrink-0 text-xs font-semibold border px-2.5 py-1 rounded-full ${s.cls}`}>
+                    {s.icon} {s.label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
 interface DashboardPageProps {
   user: AppUser;
@@ -17,9 +150,6 @@ interface DashboardPageProps {
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({
   user,
-  bookings,
-  listings,
-  loading,
   onLogout,
   onUpdateUser,
 }) => {
@@ -146,16 +276,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         );
       case 'maintenance':
         return (
-          <div className="animate-fadeIn space-y-6">
-            <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm space-y-4">
-              <h3 className="text-lg font-bold">Submit Maintenance Ticket</h3>
-              <input className="w-full border p-2 rounded-lg" placeholder="Issue Category (e.g., Plumbing)"/>
-              <textarea className="w-full border p-2 rounded-lg" placeholder="Describe the issue..."></textarea>
-              <button className="bg-emerald-600 text-white p-3 rounded-xl text-sm font-semibold w-full">Submit Request</button>
-              <h4 className="text-md font-bold mt-4">Status Tracker</h4>
-              <div className="h-2 w-full bg-gray-200 rounded-full mt-2"><div className="h-2 bg-emerald-500 rounded-full w-1/2"></div></div>
-            </div>
-          </div>
+          <TenantMaintenanceTab user={user} />
         );
       case 'inbox':
         return (

@@ -1,4 +1,4 @@
-import { PropertyListing, Booking, PaymentRecord } from '../types';
+import type { PropertyListing, Booking, PaymentRecord } from '../types';
 
 const API_URL = 'http://localhost:5000/api';
 

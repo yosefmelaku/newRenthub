@@ -7,7 +7,6 @@ import {
   UserCircle2, 
   Lock, 
   Zap, 
-  ReceiptText,
   ShieldAlert,
   ClipboardList,
   Sparkles,
@@ -22,25 +21,12 @@ import {
   X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../lib/firebase';
-
 import { HowItWorksSection } from './HowItWorksSection';
 
 const rotatingWords = [
   { text: "report issues", color: "text-red-600" },
   { text: "calculate payments", color: "text-blue-600" },
   { text: "access agreements", color: "text-emerald-600" }
-];
-
-const solutions = [
-  { icon: LineChart, text: "Rental accounting", desc: "Track income and expenses easily for every property." },
-  { icon: FileText, text: "Tax reporting", desc: "Simplify your tax filing with automated financial summaries." },
-  { icon: CreditCard, text: "Collect rent", desc: "Automate rent collection and track payments effortlessly." },
-  { icon: Search, text: "Find tenants", desc: "Market your property to thousands of potential tenants." },
-  { icon: Users, text: "Tenant screening", desc: "Verify background, credit score, and references quickly." },
-  { icon: PenTool, text: "Electronic signatures", desc: "Digitally sign and manage your lease agreements." },
-  { icon: Hammer, text: "Property maintenance", desc: "Log, track, and resolve maintenance issues efficiently." },
 ];
 
 const letterContainer = {
@@ -53,7 +39,7 @@ const letterItem = {
   visible: { opacity: 1, y: 0 },
 };
 
-import { AppUser } from '../types';
+import type { AppUser } from '../types';
 
 interface LandingPageProps {
   onLoginClick: () => void;
@@ -89,7 +75,7 @@ const Overlay = ({ isOpen, onClose, title, children, error }: { isOpen: boolean,
   </AnimatePresence>
 );
 
-export const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onGetStartedClick, onAdminLoginClick, onAuthSuccess, onPricingClick, onHowItWorksClick, onReviewsClick }) => {
+export const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onAdminLoginClick, onAuthSuccess, onPricingClick, onHowItWorksClick, onReviewsClick }) => {
   const [index, setIndex] = useState(0);
   const [isSolutionsOpen, setIsSolutionsOpen] = useState(false);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
@@ -119,29 +105,23 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onGetSta
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      setIsLoginOpen(false);
-      onAuthSuccess({ name: 'User', email: userCredential.user.email || '', role: 'renter' });
-    } catch (err: any) {
-      setError(err.message);
+    if (!email.trim() || !password) {
+      setError('Please enter your email and password.');
+      return;
     }
+    setIsLoginOpen(false);
+    onAuthSuccess({ name: email.split('@')[0], email: email.trim(), role: 'renter' });
   };
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      setIsGetStartedOpen(false);
-      onAuthSuccess({ name: fullName, email: userCredential.user.email || '', role: 'renter' });
-    } catch (err: any) {
-      if (err.code === 'auth/email-already-in-use') {
-        setError('This email is already registered. Please log in instead.');
-      } else {
-        setError(err.message);
-      }
+    if (!fullName.trim() || !email.trim() || !password) {
+      setError('Please fill in all fields.');
+      return;
     }
+    setIsGetStartedOpen(false);
+    onAuthSuccess({ name: fullName.trim(), email: email.trim(), role: 'renter' });
   };
 
 

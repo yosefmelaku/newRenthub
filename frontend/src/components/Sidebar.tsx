@@ -25,8 +25,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activeSection, 
   onSectionChange, 
   onLogout, 
-  menuItems, 
-  title,
+  menuItems,
 }) => {
   return (
     <aside className="bg-[#0e223d] text-slate-300 w-64 flex flex-col shrink-0 min-h-screen">

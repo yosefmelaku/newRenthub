@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, CheckCircle, MoreVertical, Building2, TrendingUp, DollarSign, Users } from 'lucide-react';
+import { AlertTriangle, CheckCircle, MoreVertical, DollarSign, Users } from 'lucide-react';
 
 // Define Types
 interface Owner {

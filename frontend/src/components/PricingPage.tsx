@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { Check, X } from 'lucide-react';
-import { motion } from 'motion/react';
+import { Check } from 'lucide-react';
 
 export const PricingPage: React.FC = () => {
   const [units, setUnits] = useState(20);

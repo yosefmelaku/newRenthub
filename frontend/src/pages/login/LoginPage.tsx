@@ -1,8 +1,6 @@
 import React, { useState, type FormEvent } from 'react';
-import { Home, UserCircle2, ShieldCheck, ArrowRight, LogIn, Lock, Building2, ArrowLeft, Eye, EyeOff, AlertTriangle, CheckCircle2, XCircle, Sparkles } from 'lucide-react';
-import type { AppUser, UserRole } from '../../types';
-import { auth } from '../../lib/firebase';
-import { signInWithPopup, GoogleAuthProvider, FacebookAuthProvider, OAuthProvider } from 'firebase/auth';
+import { Home, ShieldCheck, ArrowRight, LogIn, ArrowLeft, Eye, EyeOff, AlertTriangle } from 'lucide-react';
+import type { AppUser } from '../../types';
 
 interface LoginPageProps {
   onLogin: (user: AppUser) => void;
@@ -41,20 +39,11 @@ function getPasswordStrength(pw: string): { score: number; label: string; color:
   return { score, label, color, checks };
 }
 
-// Forbidden usernames for any role
-const FORBIDDEN_USERNAMES = ['admin', 'administrator', 'root', 'superadmin', 'super_admin', 'sysadmin', 'system'];
-
-function isForbiddenUsername(value: string): boolean {
-  return FORBIDDEN_USERNAMES.some(f => value.toLowerCase().replace(/\s/g, '').includes(f));
-}
-
 export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onCancel, initialMode = 'signup', role }) => {
   const [flow, setFlow] = useState<AuthFlowState>(() => {
     if (initialMode === 'login') return 'login-form';
     return 'signup-form';
   });
-  const [authMode, setAuthMode] = useState<'signup' | 'login'>(initialMode);
-  const selectedRole = role;
 
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
@@ -62,88 +51,34 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onCancel, initial
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [showStrength, setShowStrength] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
-  const [isSocialLogin, setIsSocialLogin] = useState(false);
 
   const strength = getPasswordStrength(password);
 
-  const handleSocialClick = async (providerName: 'google' | 'apple' | 'facebook') => {
-    let provider;
-    switch (providerName) {
-      case 'google':
-        provider = new GoogleAuthProvider();
-        break;
-      case 'facebook':
-        provider = new FacebookAuthProvider();
-        break;
-      case 'apple':
-        provider = new OAuthProvider('apple.com');
-        break;
-    }
-    
-    if (!provider) return;
-
-    try {
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
-      setEmail(user.email || '');
-      setName(user.displayName || '');
-      setFlow('name-entry');
-    } catch (error) {
-      console.error("Social login failed", error);
-      setErrorMsg("Social login failed. Please try again.");
-    }
-  };
-
-  const handleQuickLogin = (role: 'renter' | 'owner' | 'super-admin') => {
-    let emailVal = '';
-    let nameVal = '';
-    if (role === 'renter') {
-      emailVal = 'demo.tenant@portal.com';
-      nameVal = 'Demo Tenant';
-    } else if (role === 'owner') {
-      emailVal = 'owner_default@portal.com';
-      nameVal = 'Demo Owner';
-    } else {
-      emailVal = 'admin@portal.com';
-      nameVal = 'System Admin';
-    }
-    onLogin({ name: nameVal, email: emailVal, role });
+  const handleSocialClick = (_providerName: 'google' | 'apple' | 'facebook') => {
+    setFlow('name-entry');
   };
 
   const handleModeSelection = (mode: 'signup' | 'login') => {
     setErrorMsg('');
-    setAuthMode(mode);
     setFlow(mode === 'signup' ? 'signup-form' : 'login-form');
   };
 
   const handleSignupSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-
     if (!email.trim() || !email.includes('@')) { setErrorMsg('Please enter a valid email address.'); return; }
-
-    // Enforce strong password
     if (strength.score < 4) {
       setErrorMsg('Password is too weak. Please meet all security requirements below.');
-      setShowStrength(true);
       return;
     }
-
     setErrorMsg('');
     setFlow('name-entry');
   };
 
   const handleLoginSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-
     if (!email.trim()) { setErrorMsg('Please enter your email address.'); return; }
     if (!password) { setErrorMsg('Please enter your password.'); return; }
-
-    const emailLower = email.toLowerCase();
-
-    // Assuming authentication succeeds for now as a demo
-    // If successful, transition to name-entry to collect details
     setFlow('name-entry');
   };
 
@@ -199,7 +134,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onCancel, initial
             <div className="space-y-5 animate-fadeIn">
               <div>
                 <h3 className="text-2xl font-extrabold text-slate-900">
-                  Create your {selectedRole.charAt(0).toUpperCase() + selectedRole.slice(1)} Account
+                  Create your {role.charAt(0).toUpperCase() + role.slice(1)} Account
                 </h3>
                 <p className="text-sm text-slate-500 mt-1">Please provide the necessary information to register your account.</p>
               </div>
@@ -225,7 +160,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onCancel, initial
                   <div className="relative">
                     <input
                       type={showPassword ? 'text' : 'password'} required placeholder="Secure password"
-                      value={password} onChange={e => { setPassword(e.target.value); setShowStrength(true); }}
+                      value={password} onChange={e => setPassword(e.target.value)}
                       className="w-full rounded-2xl border border-slate-200 bg-slate-50 pl-4 pr-12 py-3.5 text-sm outline-none focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/5 transition"
                     />
                     <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
@@ -328,9 +263,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onCancel, initial
 
               <form onSubmit={(e) => { 
                 e.preventDefault(); 
-                console.log('Completing registration with:', { name, email, role: selectedRole, address, phone });
-                onLogin({ name, email: email || 'social-user@example.com', role: selectedRole, address, phone }); 
-                console.log('onLogin called in LoginPage');
+                onLogin({ name, email: email || 'social-user@example.com', role, address, phone }); 
               }} className="space-y-4">
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Full Name</label>

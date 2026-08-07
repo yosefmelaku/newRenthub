@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { PropertyListing, Booking, AppUser } from './types';
+import type { PropertyListing, Booking, AppUser } from './types';
 import { Navbar } from './components/Navbar';
 import { ListingExplorer } from './components/ListingExplorer';
 import { PropertyDetailsModal } from './components/PropertyDetailsModal';
@@ -16,9 +16,7 @@ import { ReviewsPage } from './components/ReviewsPage';
 
 import {
   getAllListings,
-  createListing,
   getBookingsByRenter,
-  getAllBookings,
   createBooking,
   createPaymentRecord,
   updateBookingStatus
@@ -36,7 +34,6 @@ export default function App() {
     const savedUser = localStorage.getItem('currentUser');
     return savedUser ? JSON.parse(savedUser) : null;
   });
-  const [showUpgradePage, setShowUpgradePage] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'signup'>('signup');
   const [selectedRole, setSelectedRole] = useState<'renter' | 'owner' | 'super-admin' | null>(null);
 
@@ -66,7 +63,6 @@ export default function App() {
   }, [currentTab]);
 
   const [globalSearchTerm, setGlobalSearchTerm] = useState('');
-  const [accessNotice, setAccessNotice] = useState<string | null>(null);
 
   const [listings, setListings] = useState<PropertyListing[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -119,7 +115,6 @@ export default function App() {
   const handleAuthSuccess = (user: AppUser) => {
     console.log('Auth success, user:', user);
     setCurrentUser(user);
-    setAccessNotice(null);
     console.log('Setting current tab based on role:', user.role);
     if (user.role === 'owner') {
       setCurrentTab('owner-dashboard');
@@ -131,13 +126,11 @@ export default function App() {
   };
 
   const handleTabChange = (nextTab: AppTab) => {
-    setAccessNotice(null);
     setCurrentTab(nextTab);
   };
 
   const handleLogout = () => {
     setCurrentUser(null);
-    setAccessNotice(null);
     setCurrentTab('explore');
   };
 
@@ -228,7 +221,7 @@ export default function App() {
         <LoginPage 
           initialMode={authMode} 
           onLogin={handleAuthSuccess} 
-          onClose={() => handleTabChange('explore')}
+          onCancel={() => handleTabChange('explore')}
           role={selectedRole}
         />
       );
@@ -261,7 +254,7 @@ export default function App() {
       <div>
         {currentTab !== 'owner-dashboard' && (
           <Navbar
-            currentTab={currentTab === 'auth' ? 'explore' : currentTab}
+            currentTab={currentTab === 'auth' || currentTab === 'role-selection' || currentTab === 'pricing' || currentTab === 'how-it-works' || currentTab === 'reviews' ? 'explore' : currentTab}
             setCurrentTab={handleTabChange}
             currentUser={currentUser}
             globalSearchTerm={globalSearchTerm}
@@ -356,7 +349,6 @@ export default function App() {
       {selectedProperty && (
         <PropertyDetailsModal
           property={selectedProperty}
-          userRole="renter"
           onClose={() => setSelectedProperty(null)}
           onInitiateBooking={handleInitiateBooking}
         />

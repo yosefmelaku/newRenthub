@@ -1,6 +1,6 @@
 import React, { useState, type FormEvent } from 'react';
-import { Home, UserCircle2, ShieldCheck, ArrowRight, LogIn, Lock, Building, CheckCircle2, ChevronRight, ArrowLeft } from 'lucide-react';
-import type { AppUser, UserRole } from '../types';
+import { Home, UserCircle2, ShieldCheck, ArrowRight, LogIn, Building, ChevronRight, ArrowLeft } from 'lucide-react';
+import type { AppUser } from '../types';
 
 interface PortalLoginPageProps {
   onLogin: (user: AppUser) => void;

@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { PropertyListing } from '../types';
+import type { PropertyListing } from '../types';
 import { PropertyCard } from './PropertyCard';
-import { Search, SlidersHorizontal, Check, X, Building, Compass, Sparkles, Home, Bed, ShieldCheck, Zap, Layers3, LayoutGrid } from 'lucide-react';
+import { Search, SlidersHorizontal, Check, Building, Compass, Sparkles, Home, Bed, ShieldCheck, Zap, LayoutGrid } from 'lucide-react';
 import { MapComponent } from './MapComponent';
 
 interface ListingExplorerProps {

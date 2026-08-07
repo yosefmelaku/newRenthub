@@ -1,5 +1,5 @@
 import React from 'react';
-import { PropertyListing } from '../types';
+import type { PropertyListing } from '../types';
 import { Star, MapPin, Bed, Bath, Home } from 'lucide-react';
 
 interface PropertyCardProps {

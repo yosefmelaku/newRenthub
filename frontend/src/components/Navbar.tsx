@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Home, User, ShieldAlert, KeyRound, Lock, LogOut, Search, Building2, Settings, HelpCircle, ChevronDown } from 'lucide-react';
-import { AppUser } from '../types';
+import { Home, ShieldAlert, KeyRound, LogOut, Search, Building2, Settings, HelpCircle, ChevronDown } from 'lucide-react';
+import type { AppUser } from '../types';
 
 
 interface NavbarProps {

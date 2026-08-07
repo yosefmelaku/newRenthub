@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { PropertyListing } from '../types';
+import type { PropertyListing } from '../types';
 
 // Fix Leaflet's default marker icons reference issue in modern bundlers
 delete (L.Icon.Default.prototype as any)._getIconUrl;

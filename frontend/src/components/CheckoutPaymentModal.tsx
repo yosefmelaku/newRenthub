@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { PropertyListing, Booking } from '../types';
+import type { PropertyListing } from '../types';
 import { X, CreditCard, ShieldCheck, CheckCircle2, Loader2, Sparkles, AlertCircle, FileText } from 'lucide-react';
 
 interface CheckoutPaymentModalProps {
@@ -130,7 +130,6 @@ export const CheckoutPaymentModal: React.FC<CheckoutPaymentModalProps> = ({
     }
     const expParts = expiry.split('/');
     const expMonth = parseInt(expParts[0], 10);
-    const expYear = parseInt(expParts[1], 10);
     if (expMonth < 1 || expMonth > 12) {
       setErrorMsg('Invalid expiry month');
       return;

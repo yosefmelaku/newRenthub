@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { PropertyListing } from '../types';
+import type { PropertyListing } from '../types';
 import { X, Calendar, ShieldCheck, MapPin, Bed, Bath, Star, Sparkles, AlertCircle } from 'lucide-react';
 import { MapComponent } from './MapComponent';
 

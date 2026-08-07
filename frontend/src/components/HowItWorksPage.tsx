@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { Check, Building, FileText, Zap, Search, Key, Smartphone } from 'lucide-react';
+import { motion } from 'motion/react';
+import { Building, FileText, Zap, Search, Key, Smartphone } from 'lucide-react';
 
 const ownerSteps = [
   { title: "Add & Segment Inventory", description: "List your assets with ease, categorizing them as Commercial Offices, Residential Villas, or Compact Studios.", icon: Building, img: "https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&q=80&w=800" },

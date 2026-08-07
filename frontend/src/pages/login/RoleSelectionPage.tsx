@@ -1,5 +1,5 @@
 import React from 'react';
-import { User, Building2, ShieldCheck } from 'lucide-react';
+import { User, Building2 } from 'lucide-react';
 
 interface RoleSelectionPageProps {
   onSelectRole: (role: 'renter' | 'owner' | 'super-admin') => void;

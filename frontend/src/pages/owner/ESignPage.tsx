@@ -1,14 +1,9 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { 
-  PenTool, 
-  FileCheck, 
-  ShieldAlert, 
   History, 
   Share2, 
   Plus, 
   Upload, 
-  ChevronRight,
-  MoreVertical,
   Download
 } from 'lucide-react';
 

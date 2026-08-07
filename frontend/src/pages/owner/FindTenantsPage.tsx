@@ -3,9 +3,7 @@ import {
   Search, 
   Users, 
   FileText, 
-  CheckCircle2, 
   Clock, 
-  AlertCircle,
   MoreVertical,
   Plus
 } from 'lucide-react';

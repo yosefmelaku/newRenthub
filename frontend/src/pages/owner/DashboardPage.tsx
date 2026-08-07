@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, 
-  Building2, 
   Users, 
   FileText, 
   Menu, 
@@ -9,22 +8,19 @@ import {
   Lightbulb,
   Briefcase,
   Wrench,
-  User,
-  PlusCircle,
   Calendar,
   ChevronDown,
-  RefreshCw,
   CreditCard,
   PenTool
 } from 'lucide-react';
-import { Sidebar, SidebarItem } from '../../components/Sidebar';
+import { Sidebar, type SidebarItem } from '../../components/Sidebar';
 import { AccountingPage } from './AccountingPage';
 import { TaxReportingPage } from './TaxReportingPage';
 import { RentGatewayPage } from './RentGatewayPage';
 import { ESignPage } from './ESignPage';
 import { FindTenantsPage } from './FindTenantsPage';
 import { MaintenancePage } from './MaintenancePage';
-import { AppUser } from '../../types';
+import type { AppUser } from '../../types';
 
 interface DashboardPageProps {
   user: AppUser;
@@ -32,25 +28,30 @@ interface DashboardPageProps {
   onUpdateUser: (user: AppUser) => void;
 }
 
-export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, onUpdateUser }) => {
+export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout }) => {
   const [showNewRequestModal, setShowNewRequestModal] = useState(false);
   const [activeSection, setActiveSection] = useState('dashboard');
-  const [accountSubSection, setAccountSubSection] = useState<'main' | 'profile' | 'password' | 'email'>('main');
   const [showDropdown, setShowDropdown] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [name, setName] = useState(user.name);
-  const [address, setAddress] = useState(user.address || '');
-  const [phone, setPhone] = useState(user.phone || '');
+  const [newRequestCount, setNewRequestCount] = useState(0);
 
-  const handleUpdateProfile = () => {
-    onUpdateUser({ ...user, name, address, phone });
-    setEditing(false);
-    setAccountSubSection('main');
-  };
+  // Poll for new maintenance requests every 30 seconds
+  useEffect(() => {
+    const fetchCount = async () => {
+      try {
+        const res = await fetch('http://localhost:5000/api/maintenance');
+        if (res.ok) {
+          const data: { status: string }[] = await res.json();
+          setNewRequestCount(data.filter(r => r.status === 'pending' || r.status === 'NEW').length);
+        }
+      } catch { /* silent */ }
+    };
+    fetchCount();
+    const interval = setInterval(fetchCount, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleAccountSettingsClick = () => {
     setActiveSection('account-settings');
-    setAccountSubSection('main');
     setShowDropdown(false);
   };
 
@@ -123,7 +124,18 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout, on
                 <div className="flex items-center gap-6">
                     <div className="flex items-center gap-4 text-gray-400">
                         <Calendar className="h-5 w-5" />
-                        <Bell className="h-5 w-5" />
+                        <button
+                          onClick={() => setActiveSection('maintenance')}
+                          className="relative text-gray-400 hover:text-gray-700 transition"
+                          title="Maintenance requests"
+                        >
+                          <Bell className="h-5 w-5" />
+                          {newRequestCount > 0 && (
+                            <span className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
+                              {newRequestCount}
+                            </span>
+                          )}
+                        </button>
                         <Lightbulb className="h-5 w-5" />
                     </div>
                     <div className="relative">

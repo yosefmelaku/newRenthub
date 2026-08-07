@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { MoreVertical, CheckCircle, Clock, User, Building2 } from 'lucide-react';
+import { MoreVertical, CheckCircle, Clock, User } from 'lucide-react';
 
 const users = {
   owners: [

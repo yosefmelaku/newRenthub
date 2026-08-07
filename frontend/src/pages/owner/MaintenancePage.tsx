@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { PlusCircle, Wrench, Clock, CheckCircle2, ChevronRight, ChevronLeft } from 'lucide-react';
+import { PlusCircle, Wrench, Clock, CheckCircle2, ChevronLeft } from 'lucide-react';
 
 // --- Types ---
 type Status = 'NEW' | 'IN_PROGRESS' | 'COMPLETED';
@@ -20,8 +20,8 @@ export const MaintenancePage: React.FC = () => {
   const [newReq, setNewReq] = useState({ title: '', property: '', description: '', viewableBy: 'Tenants' });
 
   // Use the new API URL, assume proxy or absolute URL depending on setup.
-  // Assuming our Express backend runs on http://localhost:3001 for now
-  const API_URL = 'http://localhost:3001/api';
+  // Assuming our Express backend runs on http://localhost:5000 for now
+  const API_URL = 'http://localhost:5000/api';
 
   useEffect(() => {
     fetchRequests();

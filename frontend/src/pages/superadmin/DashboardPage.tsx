@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { ShieldCheck, Database, Users, AlertTriangle, CheckCircle, XCircle, Home, Settings, LayoutDashboard, MoreVertical } from 'lucide-react';
-import { Sidebar, SidebarItem } from '../../components/Sidebar';
+import { Database, Users, AlertTriangle, CheckCircle, XCircle, Settings, LayoutDashboard, MoreVertical } from 'lucide-react';
+import { Sidebar, type SidebarItem } from '../../components/Sidebar';
 import { UserDirectory } from '../../components/superadmin/UserDirectory';
 import { PropertyInventory } from '../../components/superadmin/PropertyInventory';
 import { SettingsPanel } from '../../components/superadmin/SettingsPanel';

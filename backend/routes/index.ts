@@ -28,6 +28,16 @@ router.post('/payments', createPayment);
 // Maintenance Requests
 router.get('/maintenance', getAllMaintenanceRequests);
 router.post('/maintenance', createMaintenanceRequest);
-router.post('/payments', createPayment);
+router.patch('/maintenance/:id', async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+  try {
+    const pool = (await import('../database/db')).default;
+    await pool.query('UPDATE maintenance_requests SET status = $1 WHERE id = $2', [status, id]);
+    res.json({ message: 'Status updated' });
+  } catch (error) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 export default router;

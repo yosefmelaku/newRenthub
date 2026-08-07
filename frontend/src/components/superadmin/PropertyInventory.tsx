@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Filter, AlertTriangle } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 
 export const PropertyInventory: React.FC = () => {
   const [filter, setFilter] = useState('all');

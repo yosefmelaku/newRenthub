@@ -1,12 +1,6 @@
 import React, { useState } from 'react';
 import { 
-  CreditCard, 
   Bell, 
-  Clock, 
-  CheckCircle2, 
-  AlertCircle, 
-  ChevronDown, 
-  Settings,
   MoreVertical
 } from 'lucide-react';
 
