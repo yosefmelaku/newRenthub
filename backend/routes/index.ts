@@ -2,9 +2,12 @@ import { Router } from 'express';
 import { getAllListings, createListing } from '../controllers/listings.controller';
 import { createBooking, getBookingsByRenter, updateBookingStatus } from '../controllers/bookings.controller';
 import { createPayment } from '../controllers/payments.controller';
-
 import { getAllUsers, getUserById, createUser } from '../controllers/users.controller';
 import { getAllMaintenanceRequests, createMaintenanceRequest } from '../controllers/maintenance.controller';
+import { registerProperty } from '../controllers/properties.controller';
+import { createLease } from '../controllers/leases.controller';
+import { getPendingApprovals, getRentalsMatrix } from '../controllers/admin.controller';
+import { signContract } from '../controllers/esign.controller';
 
 const router = Router();
 
@@ -29,6 +32,7 @@ router.post('/payments', createPayment);
 router.get('/maintenance', getAllMaintenanceRequests);
 router.post('/maintenance', createMaintenanceRequest);
 router.patch('/maintenance/:id', async (req, res) => {
+
   const { id } = req.params;
   const { status } = req.body;
   try {
@@ -39,5 +43,18 @@ router.patch('/maintenance/:id', async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+// Properties — owner registration workflow
+router.post('/properties/register', registerProperty);
+
+// Leases — tenant booking / lease creation
+router.post('/leases/create', createLease);
+
+// E-Sign — tenant contract execution
+router.post('/esign/sign-contract', signContract);
+
+// Admin — superadmin-only endpoints
+router.get('/admin/approvals', getPendingApprovals);
+router.get('/admin/rentals-matrix', getRentalsMatrix);
 
 export default router;
