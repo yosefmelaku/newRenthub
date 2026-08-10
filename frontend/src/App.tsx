@@ -249,10 +249,13 @@ export default function App() {
     );
   }
 
+  // Tabs that take over the full viewport (no navbar, no outer padding)
+  const isFullscreenTab = currentTab === 'owner-dashboard' || currentTab === 'renter-dashboard' || currentTab === 'super-admin';
+
   return (
     <div className="min-h-screen bg-slate-50/50 flex flex-col justify-between" id="app-root-layout">
-      <div>
-        {currentTab !== 'owner-dashboard' && (
+      <div className={isFullscreenTab ? 'flex-1' : ''}>
+        {!isFullscreenTab && (
           <Navbar
             currentTab={currentTab === 'auth' || currentTab === 'role-selection' || currentTab === 'pricing' || currentTab === 'how-it-works' || currentTab === 'reviews' ? 'explore' : currentTab}
             setCurrentTab={handleTabChange}
@@ -264,75 +267,80 @@ export default function App() {
           />
         )}
 
-        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {currentTab === 'explore' && (
-            <div className="animate-fadeIn">
-              {loadingListings ? (
-                <div className="py-20 text-center" id="listings-loading">
-                  <div className="h-10 w-10 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                  <p className="text-gray-500 font-sans text-sm font-semibold">Loading luxury spaces...</p>
-                </div>
-              ) : (
-                <ListingExplorer
-                  listings={listings}
-                  searchTerm={globalSearchTerm}
-                  onSearchTermChange={setGlobalSearchTerm}
-                  onSelectProperty={(property) => setSelectedProperty(property)}
-                />
-              )}
-            </div>
-          )}
-          {currentTab === 'pricing' && (
-            <div className="animate-fadeIn">
-              <PricingPage />
-            </div>
-          )}
-          {currentTab === 'how-it-works' && (
-            <div className="animate-fadeIn">
-              <HowItWorksPage />
-            </div>
-          )}
-          {currentTab === 'reviews' && (
-            <div className="animate-fadeIn">
-              <ReviewsPage />
-            </div>
-          )}
+        {/* Full-screen dashboard views — flush to the top, no outer padding */}
+        {currentTab === 'renter-dashboard' && (
+          <div className="animate-fadeIn">
+            <RenterDashboardPage
+              user={currentUser}
+              bookings={bookings}
+              listings={listings}
+              onCancelBooking={handleCancelBooking}
+              loading={loadingBookings}
+              onRefresh={fetchBookings}
+              onBrowseMore={() => setCurrentTab('explore')}
+              onLogout={handleLogout}
+              onUpdateUser={setCurrentUser}
+            />
+          </div>
+        )}
+        {currentTab === 'super-admin' && (
+          <div className="animate-fadeIn">
+            <SuperAdminDashboardPage
+              userName={currentUser?.name ?? 'Admin'}
+              onLogout={handleLogout}
+            />
+          </div>
+        )}
+        {currentTab === 'owner-dashboard' && currentUser && (
+          <div className="animate-fadeIn">
+            <OwnerDashboardPage
+              user={currentUser}
+              onLogout={handleLogout}
+              onUpdateUser={setCurrentUser}
+            />
+          </div>
+        )}
 
-          {currentTab === 'renter-dashboard' && (
-            <div className="animate-fadeIn">
-              <RenterDashboardPage
-                user={currentUser}
-                bookings={bookings}
-                listings={listings}
-                onCancelBooking={handleCancelBooking}
-                loading={loadingBookings}
-                onRefresh={fetchBookings}
-                onBrowseMore={() => setCurrentTab('explore')}
-                onLogout={handleLogout}
-                onUpdateUser={setCurrentUser}
-              />
-            </div>
-          )}
-          {currentTab === 'super-admin' && (
-            <div className="animate-fadeIn">
-              <SuperAdminDashboardPage
-                userName={currentUser?.name ?? 'Admin'}
-                onLogout={handleLogout}
-              />
-            </div>
-          )}
-          {currentTab === 'owner-dashboard' && currentUser && (
-            <div className="animate-fadeIn">
-              <OwnerDashboardPage
-                user={currentUser}
-                onLogout={handleLogout}
-                onUpdateUser={setCurrentUser}
-              />
-            </div>
-          )}
-        </main>
+        {/* Standard pages — constrained width with padding */}
+        {!isFullscreenTab && (
+          <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            {currentTab === 'explore' && (
+              <div className="animate-fadeIn">
+                {loadingListings ? (
+                  <div className="py-20 text-center" id="listings-loading">
+                    <div className="h-10 w-10 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                    <p className="text-gray-500 font-sans text-sm font-semibold">Loading luxury spaces...</p>
+                  </div>
+                ) : (
+                  <ListingExplorer
+                    listings={listings}
+                    searchTerm={globalSearchTerm}
+                    onSearchTermChange={setGlobalSearchTerm}
+                    onSelectProperty={(property) => setSelectedProperty(property)}
+                  />
+                )}
+              </div>
+            )}
+            {currentTab === 'pricing' && (
+              <div className="animate-fadeIn">
+                <PricingPage />
+              </div>
+            )}
+            {currentTab === 'how-it-works' && (
+              <div className="animate-fadeIn">
+                <HowItWorksPage />
+              </div>
+            )}
+            {currentTab === 'reviews' && (
+              <div className="animate-fadeIn">
+                <ReviewsPage />
+              </div>
+            )}
+          </main>
+        )}
       </div>
 
+      {!isFullscreenTab && (
       <footer className="bg-white border-t border-gray-100 py-6 mt-12" id="app-footer">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
           <div className="flex items-center space-x-2">
@@ -345,6 +353,7 @@ export default function App() {
           </div>
         </div>
       </footer>
+      )}
 
       {selectedProperty && (
         <PropertyDetailsModal

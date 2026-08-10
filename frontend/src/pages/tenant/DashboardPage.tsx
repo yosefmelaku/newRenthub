@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, CreditCard, Wrench, MessageSquareText, LayoutDashboard, User, Building2, ChevronDown, CheckCircle2, Clock, AlertCircle, Send } from 'lucide-react';
-import { Sidebar, type SidebarItem } from '../../components/Sidebar';
+import { Calendar, CreditCard, Wrench, MessageSquareText, LayoutDashboard, User, Building2, ChevronDown, CheckCircle2, Clock, AlertCircle, Send, ShieldCheck, LogOut, Menu, X } from 'lucide-react';
 import type { AppUser, Booking, PropertyListing } from '../../types';
 
 const API_URL = 'http://localhost:5000/api';
@@ -154,6 +153,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   onUpdateUser,
 }) => {
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(user.name);
@@ -170,7 +170,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     setShowDropdown(false);
   };
 
-  const sidebarItems: SidebarItem[] = [
+  const sidebarItems: { id: string; label: string; icon: React.ReactNode }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="h-5 w-5" /> },
     { id: 'lease', label: 'My Lease & Property', icon: <Building2 className="h-5 w-5" /> },
     { id: 'payments', label: 'Payments & Billing', icon: <CreditCard className="h-5 w-5" /> },
@@ -321,38 +321,169 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     }
   };
 
-  return (
-    <div className="flex flex-col lg:flex-row bg-[#f8fafc] min-h-[90vh] rounded-3xl overflow-hidden border border-slate-200/60 shadow-lg font-sans" id="renter-dashboard-container">
-      <Sidebar 
-        activeSection={activeTab} 
-        onSectionChange={setActiveTab} 
-        onLogout={onLogout} 
-        menuItems={sidebarItems} 
-        title="RentHub" 
-      />
+  // Close sidebar when a nav item is tapped on mobile
+  const handleTabChange = (id: string) => {
+    setActiveTab(id);
+    setSidebarOpen(false);
+  };
 
-      <div className="flex-1 flex flex-col min-w-0">
-        <header className="bg-white border-b border-slate-200/80 px-6 py-4 flex justify-between items-center">
-          <h2 className="text-lg font-bold text-slate-800 capitalize">
-            {sidebarItems.find(item => item.id === activeTab)?.label}
+  return (
+    <div className="flex flex-col min-h-screen w-full font-sans bg-[#f8fafc]" id="renter-dashboard-container">
+
+      {/* ════════════════════════════════════════════════
+          TOP BAR — full width, single row
+          On desktop: logo zone (256px) + header zone (rest)
+          On mobile:  hamburger | page title | user avatar
+      ════════════════════════════════════════════════ */}
+      <div className="flex items-stretch w-full shrink-0 h-16 z-30 relative">
+
+        {/* Logo zone — white, 256px on lg+, full-width-aware on mobile */}
+        <div className="flex items-center gap-3 px-5 bg-white border-b border-slate-200 border-r border-slate-100 shrink-0 w-16 lg:w-64">
+          {/* Hamburger — mobile only */}
+          <button
+            className="lg:hidden text-slate-500 hover:text-slate-800 transition"
+            onClick={() => setSidebarOpen(true)}
+            aria-label="Open menu"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+
+          {/* Logo text — visible on lg+ always, hidden on mobile to save space */}
+          <div className="hidden lg:flex items-center gap-3">
+            <div className="bg-emerald-500 text-white p-1.5 rounded">
+              <ShieldCheck className="h-5 w-5" />
+            </div>
+            <span className="font-bold text-gray-900 text-lg tracking-tight">
+              Rent<span className="text-emerald-500">Hub</span>
+            </span>
+          </div>
+
+          {/* Mobile: just the shield icon as logo mark */}
+          <div className="lg:hidden flex items-center">
+            <div className="bg-emerald-500 text-white p-1.5 rounded">
+              <ShieldCheck className="h-4 w-4" />
+            </div>
+          </div>
+        </div>
+
+        {/* Header zone — fills remaining space */}
+        <header className="flex-1 bg-white border-b border-slate-200 px-4 sm:px-6 flex items-center justify-between min-w-0">
+          <h2 className="text-base sm:text-lg font-bold text-slate-800 truncate">
+            {sidebarItems.find(item => item.id === activeTab)?.label ?? 'Dashboard'}
           </h2>
-          <div className="flex items-center gap-3 bg-slate-100 px-4 py-2 rounded-full text-slate-700 font-semibold text-sm cursor-pointer relative" onClick={() => setShowDropdown(!showDropdown)}>
-              <User className="h-5 w-5"/>
-              {user.name}
-              <ChevronDown className={`h-4 w-4 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
-              
-              {showDropdown && (
-                  <div className="absolute right-0 top-full mt-2 w-48 bg-white border border-gray-100 rounded-lg shadow-lg z-50">
-                      <button onClick={handleAccountSettingsClick} className="block w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 border-b">Account settings</button>
-                      <button onClick={onLogout} className="block w-full text-left px-4 py-3 text-sm text-red-600 font-semibold hover:bg-red-50">Logout</button>
-                  </div>
-              )}
+
+          {/* User dropdown */}
+          <div
+            className="relative flex items-center gap-2 bg-slate-100 hover:bg-slate-200 transition px-3 sm:px-4 py-2 rounded-full text-slate-700 font-semibold text-sm cursor-pointer select-none shrink-0 ml-3"
+            onClick={() => setShowDropdown(!showDropdown)}
+          >
+            <User className="h-4 w-4 text-slate-500" />
+            {/* Name hidden on very small screens */}
+            <span className="hidden sm:inline truncate max-w-[120px]">{user.name}</span>
+            <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
+
+            {showDropdown && (
+              <div className="absolute right-0 top-full mt-2 w-52 bg-white border border-gray-100 rounded-xl shadow-xl z-50 overflow-hidden">
+                <div className="px-4 py-3 border-b border-gray-50">
+                  <p className="text-xs font-semibold text-gray-700 truncate">{user.name}</p>
+                  <p className="text-xs text-gray-400 truncate">{user.email}</p>
+                </div>
+                <button
+                  onClick={handleAccountSettingsClick}
+                  className="block w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition"
+                >
+                  Account settings
+                </button>
+                <button
+                  onClick={onLogout}
+                  className="block w-full text-left px-4 py-3 text-sm text-red-600 font-semibold hover:bg-red-50 transition border-t border-gray-50"
+                >
+                  Logout
+                </button>
+              </div>
+            )}
           </div>
         </header>
+      </div>
 
-        <main className="p-6 overflow-y-auto max-w-7xl w-full mx-auto">
-          {renderTabContent()}
+      {/* ════════════════════════════════════════════════
+          BODY — sidebar + content
+      ════════════════════════════════════════════════ */}
+      <div className="flex flex-1 min-h-0 relative">
+
+        {/* ── Mobile overlay backdrop ── */}
+        {sidebarOpen && (
+          <div
+            className="fixed inset-0 bg-black/40 z-40 lg:hidden"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+
+        {/* ── Sidebar nav ──
+            Desktop: static 256px column
+            Mobile:  fixed slide-in drawer from left, z-50
+        ── */}
+        <aside
+          className={`
+            bg-[#0e223d] text-slate-300 flex flex-col shrink-0
+            fixed inset-y-0 left-0 z-50 w-64 transition-transform duration-300
+            lg:static lg:translate-x-0 lg:z-auto lg:h-auto
+            ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+          `}
+        >
+          {/* Mobile drawer header — shows logo + close button */}
+          <div className="flex items-center justify-between px-5 h-16 border-b border-[#1b3252] lg:hidden">
+            <div className="flex items-center gap-3">
+              <div className="bg-emerald-500 text-white p-1.5 rounded">
+                <ShieldCheck className="h-4 w-4" />
+              </div>
+              <span className="font-bold text-white text-base tracking-tight">
+                Rent<span className="text-emerald-400">Hub</span>
+              </span>
+            </div>
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="text-slate-400 hover:text-white transition"
+              aria-label="Close menu"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          {/* Nav items */}
+          <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
+            {sidebarItems.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => handleTabChange(item.id)}
+                className={`flex items-center gap-3 w-full px-4 py-3 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
+                  activeTab === item.id
+                    ? 'bg-[#1b3252] text-white'
+                    : 'hover:bg-[#1b3252] hover:text-white text-slate-300'
+                }`}
+              >
+                {item.icon}
+                <span>{item.label}</span>
+              </button>
+            ))}
+          </nav>
+
+          <button
+            onClick={onLogout}
+            className="flex items-center gap-3 px-6 py-5 text-slate-400 hover:text-rose-400 transition text-sm font-medium border-t border-[#1b3252]"
+          >
+            <LogOut className="h-5 w-5" />
+            <span>Logout</span>
+          </button>
+        </aside>
+
+        {/* ── Main scrollable content ── */}
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6">
+          <div className="max-w-5xl w-full mx-auto">
+            {renderTabContent()}
+          </div>
         </main>
+
       </div>
     </div>
   );
