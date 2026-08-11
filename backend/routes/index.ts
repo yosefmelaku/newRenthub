@@ -3,7 +3,7 @@ import { getAllListings, createListing } from '../controllers/listings.controlle
 import { createBooking, getBookingsByRenter, updateBookingStatus } from '../controllers/bookings.controller';
 import { createPayment } from '../controllers/payments.controller';
 import { getAllUsers, getUserById, createUser } from '../controllers/users.controller';
-import { getAllMaintenanceRequests, createMaintenanceRequest } from '../controllers/maintenance.controller';
+import { getAllMaintenanceRequests, createMaintenanceRequest, submitMaintenanceTicket } from '../controllers/maintenance.controller';
 import { registerProperty } from '../controllers/properties.controller';
 import { createLease } from '../controllers/leases.controller';
 import { getPendingApprovals, getRentalsMatrix } from '../controllers/admin.controller';
@@ -31,6 +31,7 @@ router.post('/payments', createPayment);
 // Maintenance Requests
 router.get('/maintenance', getAllMaintenanceRequests);
 router.post('/maintenance', createMaintenanceRequest);
+router.post('/maintenance/submit', submitMaintenanceTicket);
 router.patch('/maintenance/:id', async (req, res) => {
 
   const { id } = req.params;

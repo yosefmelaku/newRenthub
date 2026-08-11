@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import RentalImage from '../assets/images/rental_property_landing_1784888062523.jpg';
 import { 
+  Phone,
   ShieldCheck, 
   ArrowRight, 
   Building2,
@@ -80,8 +81,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onAdminL
   const [isSolutionsOpen, setIsSolutionsOpen] = useState(false);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [isGetStartedOpen, setIsGetStartedOpen] = useState(false);
-  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [error, setError] = useState('');
 
@@ -105,23 +107,40 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onAdminL
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    if (!email.trim() || !password) {
-      setError('Please enter your email and password.');
+    if (!phone.trim() || phone.replace(/[^0-9]/g, '').length < 9) {
+      setError('Please enter a valid phone number (at least 9 digits).');
+      return;
+    }
+    if (!password) {
+      setError('Please enter your password.');
       return;
     }
     setIsLoginOpen(false);
-    onAuthSuccess({ name: email.split('@')[0], email: email.trim(), role: 'renter' });
+    const derivedName = phone.replace(/[^0-9]/g, '').slice(-4);
+    onAuthSuccess({ name: `User ${derivedName}`, email: `${phone.replace(/[^0-9+]/g, '')}@phone.user`, role: 'renter', phone: phone.trim() });
   };
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    if (!fullName.trim() || !email.trim() || !password) {
-      setError('Please fill in all fields.');
+    if (!fullName.trim()) {
+      setError('Please enter your full name.');
+      return;
+    }
+    if (!phone.trim() || phone.replace(/[^0-9]/g, '').length < 9) {
+      setError('Please enter a valid phone number (at least 9 digits).');
+      return;
+    }
+    if (!password) {
+      setError('Please enter a password.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError('Passwords do not match. Please re-enter your confirmation password.');
       return;
     }
     setIsGetStartedOpen(false);
-    onAuthSuccess({ name: fullName.trim(), email: email.trim(), role: 'renter' });
+    onAuthSuccess({ name: fullName.trim(), email: `${phone.replace(/[^0-9+]/g, '')}@phone.user`, role: 'renter', phone: phone.trim() });
   };
 
 
@@ -130,8 +149,13 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onAdminL
       <Overlay isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} title="Sign In" error={error}>
         <form className="w-full max-w-sm space-y-4" onSubmit={handleLogin}>
           <div>
-            <label className="block text-sm font-medium text-slate-700" htmlFor="login-email">Email</label>
-            <input type="email" id="login-email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full mt-1 border rounded-xl p-3" placeholder="you@example.com" required />
+            <label className="block text-sm font-medium text-slate-700" htmlFor="login-phone">Phone Number</label>
+            <div className="relative mt-1">
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                <Phone className="h-4 w-4" />
+              </div>
+              <input type="tel" id="login-phone" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full border rounded-xl p-3 pl-10" placeholder="e.g., +251912345678" required />
+            </div>
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700" htmlFor="login-password">Password</label>
@@ -147,12 +171,27 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onAdminL
             <input type="text" id="reg-name" value={fullName} onChange={(e) => setFullName(e.target.value)} className="w-full mt-1 border rounded-xl p-3" placeholder="John Doe" required />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700" htmlFor="reg-email">Email</label>
-            <input type="email" id="reg-email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full mt-1 border rounded-xl p-3" placeholder="you@example.com" required />
+            <label className="block text-sm font-medium text-slate-700" htmlFor="reg-phone">Phone Number</label>
+            <div className="relative mt-1">
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                <Phone className="h-4 w-4" />
+              </div>
+              <input type="tel" id="reg-phone" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full border rounded-xl p-3 pl-10" placeholder="e.g., +251912345678" required />
+            </div>
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700" htmlFor="reg-password">Password</label>
-            <input type="password" id="reg-password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full mt-1 border rounded-xl p-3" required />
+            <input type="password" id="reg-password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full mt-1 border rounded-xl p-3" placeholder="Create a password" required />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700" htmlFor="reg-confirm-password">Confirm Password</label>
+            <input type="password" id="reg-confirm-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className={`w-full mt-1 border rounded-xl p-3 ${confirmPassword && password !== confirmPassword ? 'border-red-400' : confirmPassword && password === confirmPassword ? 'border-emerald-400' : ''}`} placeholder="Re-enter your password" required />
+            {confirmPassword && password !== confirmPassword && (
+              <p className="text-xs text-red-500 font-semibold mt-1">Passwords do not match</p>
+            )}
+            {confirmPassword && password === confirmPassword && (
+              <p className="text-xs text-emerald-600 font-semibold mt-1">✓ Passwords match</p>
+            )}
           </div>
           <button type="submit" className="w-full bg-[#e11d48] text-white font-bold p-3 rounded-xl">Create Account</button>
         </form>

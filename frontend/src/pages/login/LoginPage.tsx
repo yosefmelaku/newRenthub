@@ -1,5 +1,5 @@
 import React, { useState, type FormEvent } from 'react';
-import { Home, ShieldCheck, ArrowRight, LogIn, ArrowLeft, Eye, EyeOff, AlertTriangle } from 'lucide-react';
+import { Home, ShieldCheck, ArrowRight, LogIn, ArrowLeft, Eye, EyeOff, AlertTriangle, Phone } from 'lucide-react';
 import type { AppUser } from '../../types';
 
 interface LoginPageProps {
@@ -50,7 +50,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onCancel, initial
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
   const strength = getPasswordStrength(password);
@@ -61,14 +63,25 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onCancel, initial
 
   const handleModeSelection = (mode: 'signup' | 'login') => {
     setErrorMsg('');
+    setPassword('');
+    setConfirmPassword('');
+    setEmail('');
+    setPhone('');
     setFlow(mode === 'signup' ? 'signup-form' : 'login-form');
   };
 
   const handleSignupSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!email.trim() || !email.includes('@')) { setErrorMsg('Please enter a valid email address.'); return; }
+    if (!phone.trim() || phone.replace(/[^0-9]/g, '').length < 9) {
+      setErrorMsg('Please enter a valid phone number (at least 9 digits).');
+      return;
+    }
     if (strength.score < 4) {
       setErrorMsg('Password is too weak. Please meet all security requirements below.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setErrorMsg('Passwords do not match. Please re-enter your confirmation password.');
       return;
     }
     setErrorMsg('');
@@ -77,7 +90,10 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onCancel, initial
 
   const handleLoginSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!email.trim()) { setErrorMsg('Please enter your email address.'); return; }
+    if (!phone.trim() || phone.replace(/[^0-9]/g, '').length < 9) {
+      setErrorMsg('Please enter a valid phone number (at least 9 digits).');
+      return;
+    }
     if (!password) { setErrorMsg('Please enter your password.'); return; }
     setFlow('name-entry');
   };
@@ -147,12 +163,17 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onCancel, initial
 
               <form onSubmit={handleSignupSubmit} className="space-y-4">
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Email Address</label>
-                  <input
-                    type="email" required placeholder="name@example.com"
-                    value={email} onChange={e => setEmail(e.target.value)}
-                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-sm outline-none focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/5 transition"
-                  />
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Phone Number</label>
+                  <div className="relative">
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                      <Phone className="h-4 w-4" />
+                    </div>
+                    <input
+                      type="tel" required placeholder="e.g., +251912345678"
+                      value={phone} onChange={e => setPhone(e.target.value)}
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 py-3.5 text-sm outline-none focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/5 transition"
+                    />
+                  </div>
                 </div>
 
                 <div>
@@ -167,6 +188,55 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onCancel, initial
                       {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                   </div>
+                  {/* Password strength indicator */}
+                  {password.length > 0 && (
+                    <div className="mt-2.5 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full transition-all duration-500 ${strength.color}`} style={{ width: `${(strength.score / 5) * 100}%` }} />
+                        </div>
+                        <span className={`text-[10px] font-bold uppercase tracking-wider ${
+                          strength.score <= 2 ? 'text-rose-500' : strength.score <= 3 ? 'text-amber-500' : 'text-emerald-600'
+                        }`}>{strength.label}</span>
+                      </div>
+                      <ul className="grid grid-cols-2 gap-x-2 gap-y-1">
+                        {strength.checks.map((c) => (
+                          <li key={c.label} className={`text-[10px] flex items-center gap-1.5 ${c.pass ? 'text-emerald-600' : 'text-slate-400'}`}>
+                            <span className={`inline-block w-1.5 h-1.5 rounded-full ${c.pass ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                            {c.label}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Confirm Password</label>
+                  <div className="relative">
+                    <input
+                      type={showConfirmPassword ? 'text' : 'password'} required placeholder="Re-enter password"
+                      value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
+                      className={`w-full rounded-2xl border bg-slate-50 pl-4 pr-12 py-3.5 text-sm outline-none focus:bg-white focus:ring-4 transition ${
+                        confirmPassword.length > 0 && password !== confirmPassword
+                          ? 'border-rose-300 focus:border-rose-500 focus:ring-rose-500/5'
+                          : confirmPassword.length > 0 && password === confirmPassword
+                          ? 'border-emerald-300 focus:border-emerald-500 focus:ring-emerald-500/5'
+                          : 'border-slate-200 focus:border-emerald-500 focus:ring-emerald-500/5'
+                      }`}
+                    />
+                    <button type="button" onClick={() => setShowConfirmPassword(!showConfirmPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer">
+                      {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  {confirmPassword.length > 0 && password !== confirmPassword && (
+                    <p className="text-[11px] text-rose-500 font-semibold mt-1.5 flex items-center gap-1">
+                      <AlertTriangle className="h-3 w-3" /> Passwords do not match
+                    </p>
+                  )}
+                  {confirmPassword.length > 0 && password === confirmPassword && (
+                    <p className="text-[11px] text-emerald-600 font-semibold mt-1.5">✓ Passwords match</p>
+                  )}
                 </div>
 
                 <button
@@ -194,7 +264,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onCancel, initial
             <div className="space-y-6 animate-fadeIn">
               <div>
                 <h3 className="text-2xl font-extrabold text-slate-900">Sign In</h3>
-                <p className="text-sm text-slate-500 mt-1">Access your account securely.</p>
+                <p className="text-sm text-slate-500 mt-1">Access your account securely using your phone number.</p>
               </div>
 
               {errorMsg && (
@@ -205,12 +275,17 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onCancel, initial
 
               <form onSubmit={handleLoginSubmit} className="space-y-4">
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Email Address</label>
-                  <input
-                    type="email" required placeholder="name@example.com"
-                    value={email} onChange={e => setEmail(e.target.value)}
-                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-sm outline-none focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/5 transition"
-                  />
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Phone Number</label>
+                  <div className="relative">
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                      <Phone className="h-4 w-4" />
+                    </div>
+                    <input
+                      type="tel" required placeholder="e.g., +251912345678"
+                      value={phone} onChange={e => setPhone(e.target.value)}
+                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 py-3.5 text-sm outline-none focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/5 transition"
+                    />
+                  </div>
                 </div>
 
                 <div>
@@ -263,7 +338,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onCancel, initial
 
               <form onSubmit={(e) => { 
                 e.preventDefault(); 
-                onLogin({ name, email: email || 'social-user@example.com', role, address, phone }); 
+                onLogin({ name, email: email || `${phone}@phone.user`, role, address, phone }); 
               }} className="space-y-4">
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Full Name</label>
@@ -281,14 +356,17 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onCancel, initial
                     className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-sm outline-none focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/5 transition"
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Phone Number</label>
-                  <input
-                    type="tel" required placeholder="e.g., +1234567890"
-                    value={phone} onChange={e => setPhone(e.target.value)}
-                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3.5 text-sm outline-none focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-500/5 transition"
-                  />
-                </div>
+                {/* Phone was already collected in the signup step — shown read-only for confirmation */}
+                {phone && (
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Phone Number</label>
+                    <input
+                      type="tel" readOnly
+                      value={phone}
+                      className="w-full rounded-2xl border border-slate-100 bg-slate-100 px-4 py-3.5 text-sm text-slate-500 cursor-not-allowed"
+                    />
+                  </div>
+                )}
                 <button type="submit" className="w-full flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 hover:bg-emerald-500 py-4 text-sm font-bold text-white shadow-md hover:shadow-lg mt-2 cursor-pointer transition">
                   Complete Registration <ArrowRight className="h-4 w-4" />
                 </button>

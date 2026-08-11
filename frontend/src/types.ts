@@ -2,7 +2,7 @@ export type UserRole = 'renter' | 'owner' | 'super-admin';
 
 export interface AppUser {
   name: string;
-  email: string;
+  email?: string;
   role: UserRole;
   address?: string;
   phone?: string;
