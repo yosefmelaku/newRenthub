@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { login } from '../controllers/auth.controller';
 import { getAllListings, createListing } from '../controllers/listings.controller';
 import { createBooking, getBookingsByRenter, updateBookingStatus } from '../controllers/bookings.controller';
 import { createPayment } from '../controllers/payments.controller';
@@ -57,5 +58,8 @@ router.post('/esign/sign-contract', signContract);
 // Admin — superadmin-only endpoints
 router.get('/admin/approvals', getPendingApprovals);
 router.get('/admin/rentals-matrix', getRentalsMatrix);
+
+// Auth
+router.post('/auth/login', login);
 
 export default router;

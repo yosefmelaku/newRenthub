@@ -86,6 +86,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onAdminL
   const [confirmPassword, setConfirmPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [error, setError] = useState('');
+  const [authRole, setAuthRole] = useState<'renter' | 'owner'>('renter');
+  const [getStartedStep, setGetStartedStep] = useState<1 | 2>(1);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -117,7 +119,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onAdminL
     }
     setIsLoginOpen(false);
     const derivedName = phone.replace(/[^0-9]/g, '').slice(-4);
-    onAuthSuccess({ name: `User ${derivedName}`, email: `${phone.replace(/[^0-9+]/g, '')}@phone.user`, role: 'renter', phone: phone.trim() });
+    onAuthSuccess({ name: `User ${derivedName}`, email: `${phone.replace(/[^0-9+]/g, '')}@phone.user`, role: authRole, phone: phone.trim() });
   };
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -140,7 +142,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onAdminL
       return;
     }
     setIsGetStartedOpen(false);
-    onAuthSuccess({ name: fullName.trim(), email: `${phone.replace(/[^0-9+]/g, '')}@phone.user`, role: 'renter', phone: phone.trim() });
+    onAuthSuccess({ name: fullName.trim(), email: `${phone.replace(/[^0-9+]/g, '')}@phone.user`, role: authRole, phone: phone.trim() });
   };
 
 
@@ -148,6 +150,23 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onAdminL
     <div className="bg-[#f8fafc] min-h-screen flex flex-col font-sans relative overflow-hidden" id="portal-landing-root">
       <Overlay isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} title="Sign In" error={error}>
         <form className="w-full max-w-sm space-y-4" onSubmit={handleLogin}>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Account Type</label>
+            <div className="flex gap-4">
+              <label className="flex-1 cursor-pointer">
+                <input type="radio" name="loginRole" value="renter" checked={authRole === 'renter'} onChange={() => setAuthRole('renter')} className="peer sr-only" />
+                <div className="text-center p-3 border rounded-xl peer-checked:border-[#059669] peer-checked:bg-emerald-50 peer-checked:text-emerald-700 font-semibold text-slate-600 transition">
+                  Tenant
+                </div>
+              </label>
+              <label className="flex-1 cursor-pointer">
+                <input type="radio" name="loginRole" value="owner" checked={authRole === 'owner'} onChange={() => setAuthRole('owner')} className="peer sr-only" />
+                <div className="text-center p-3 border rounded-xl peer-checked:border-[#059669] peer-checked:bg-emerald-50 peer-checked:text-emerald-700 font-semibold text-slate-600 transition">
+                  Property Owner
+                </div>
+              </label>
+            </div>
+          </div>
           <div>
             <label className="block text-sm font-medium text-slate-700" htmlFor="login-phone">Phone Number</label>
             <div className="relative mt-1">
@@ -165,7 +184,27 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onAdminL
         </form>
       </Overlay>
       <Overlay isOpen={isGetStartedOpen} onClose={() => setIsGetStartedOpen(false)} title="Get Started" error={error}>
+        {getStartedStep === 1 ? (
+          <div className="w-full max-w-sm flex flex-col gap-4">
+            <p className="text-center text-slate-500 mb-4 font-medium">Please select your account type to proceed.</p>
+            <button onClick={() => { setAuthRole('renter'); setGetStartedStep(2); }} className="p-4 py-8 border-2 border-slate-100 rounded-2xl hover:border-[#e11d48] hover:bg-rose-50 transition w-full flex flex-col items-center gap-3 group">
+              <div className="bg-sky-50 group-hover:bg-[#e11d48] p-4 rounded-full text-sky-600 group-hover:text-white transition">
+                <UserCircle2 className="w-10 h-10" />
+              </div>
+              <span className="font-bold text-slate-800 text-xl group-hover:text-[#e11d48]">I am a Tenant</span>
+            </button>
+            <button onClick={() => { setAuthRole('owner'); setGetStartedStep(2); }} className="p-4 py-8 border-2 border-slate-100 rounded-2xl hover:border-[#e11d48] hover:bg-rose-50 transition w-full flex flex-col items-center gap-3 group">
+              <div className="bg-emerald-50 group-hover:bg-[#e11d48] p-4 rounded-full text-emerald-600 group-hover:text-white transition">
+                <Building2 className="w-10 h-10" />
+              </div>
+              <span className="font-bold text-slate-800 text-xl group-hover:text-[#e11d48]">I am a Property Owner</span>
+            </button>
+          </div>
+        ) : (
         <form className="w-full max-w-sm space-y-4" onSubmit={handleRegister}>
+          <button type="button" onClick={() => setGetStartedStep(1)} className="text-sm font-semibold text-slate-400 hover:text-slate-700 flex items-center gap-1 mb-2">
+            <ArrowRight className="w-4 h-4 rotate-180" /> Back to selection
+          </button>
           <div>
             <label className="block text-sm font-medium text-slate-700" htmlFor="reg-name">Full Name</label>
             <input type="text" id="reg-name" value={fullName} onChange={(e) => setFullName(e.target.value)} className="w-full mt-1 border rounded-xl p-3" placeholder="John Doe" required />
@@ -195,6 +234,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onAdminL
           </div>
           <button type="submit" className="w-full bg-[#e11d48] text-white font-bold p-3 rounded-xl">Create Account</button>
         </form>
+        )}
       </Overlay>
 
       {/* Background Subtle Mesh / Gradients */}
@@ -261,7 +301,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onAdminL
               Log In
             </button>
             <button 
-              onClick={() => setIsGetStartedOpen(true)}
+              onClick={() => { setGetStartedStep(1); setIsGetStartedOpen(true); }}
               className="bg-[#e11d48] hover:bg-[#be123c] text-white font-bold text-sm px-5 py-2.5 rounded-xl transition shadow-xs cursor-pointer"
             >
               Get started
@@ -304,7 +344,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onAdminL
             
             <div className="flex flex-col sm:flex-row items-center justify-start gap-4 pt-4">
               <button
-                onClick={() => setIsGetStartedOpen(true)}
+                onClick={() => { setGetStartedStep(1); setIsGetStartedOpen(true); }}
                 className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm px-8 py-3.5 rounded-2xl transition shadow-md shadow-emerald-500/10 flex items-center justify-center gap-2 cursor-pointer"
               >
                 <span>Access Your Portal</span>
@@ -432,7 +472,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onAdminL
               ))}
             </ul>
             <button
-              onClick={() => setIsGetStartedOpen(true)}
+              onClick={() => { setAuthRole('renter'); setGetStartedStep(2); setIsGetStartedOpen(true); }}
               className="mt-8 w-full bg-slate-50 hover:bg-sky-50 hover:text-sky-700 text-slate-600 font-bold text-xs py-3 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer"
             >
               <span>Enter Tenant Console</span>
@@ -468,7 +508,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onAdminL
               ))}
             </ul>
             <button
-              onClick={() => setIsGetStartedOpen(true)}
+              onClick={() => { setAuthRole('owner'); setGetStartedStep(2); setIsGetStartedOpen(true); }}
               className="mt-8 w-full bg-slate-50 hover:bg-emerald-50 hover:text-emerald-700 text-slate-600 font-bold text-xs py-3 rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer"
             >
               <span>Enter Owner Console</span>
@@ -536,7 +576,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLoginClick, onAdminL
           <div className="flex gap-4 font-bold text-emerald-600">
             <span className="cursor-pointer hover:underline" onClick={onAdminLoginClick}>Admin Portal</span>
             <span className="cursor-pointer hover:underline" onClick={() => setIsLoginOpen(true)}>Sign In</span>
-            <span className="cursor-pointer hover:underline" onClick={() => setIsGetStartedOpen(true)}>Register Portal</span>
+            <span className="cursor-pointer hover:underline" onClick={() => { setGetStartedStep(1); setIsGetStartedOpen(true); }}>Register Portal</span>
           </div>
         </div>
       </footer>
