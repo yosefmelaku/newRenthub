@@ -18,7 +18,7 @@ import {
   MessageSquare
 } from 'lucide-react';
 
-const API_URL = 'http://localhost:5000/api';
+const API_URL = '/api';
 
 // Types
 type Severity = 'emergency' | 'medium' | 'low';

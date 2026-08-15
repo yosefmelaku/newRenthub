@@ -19,9 +19,9 @@ export const MaintenancePage: React.FC = () => {
   const [showModal, setShowModal] = useState(false);
   const [newReq, setNewReq] = useState({ title: '', property: '', description: '', viewableBy: 'Tenants' });
 
-  // Use the new API URL, assume proxy or absolute URL depending on setup.
-  // Assuming our Express backend runs on http://localhost:5000 for now
-  const API_URL = 'http://localhost:5000/api';
+  // Use the Vite proxy — all /api/* calls are forwarded to the Express backend.
+  // This works from any device (LAN, external browser) without hardcoding an IP.
+  const API_URL = '/api';
 
   useEffect(() => {
     fetchRequests();

@@ -6,12 +6,22 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
-    host: '0.0.0.0',   // bind to all network interfaces → accessible from LAN/external browser
-    port: 5173,         // explicit port so it's predictable
-    strictPort: true,   // fail clearly if port is taken instead of silently picking another
+    host: '0.0.0.0',   // bind to all interfaces → accessible from LAN/external browser
+    port: 5173,
+    strictPort: true,
+    proxy: {
+      // Every request to /api/* gets forwarded to the Express backend.
+      // This means frontend code only ever calls /api/... (no hardcoded IP/port),
+      // so it works from any device that can reach this Vite server.
+      '/api': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+        secure: false,
+      },
+    },
   },
   preview: {
-    host: '0.0.0.0',   // same for `vite preview` (production build preview)
+    host: '0.0.0.0',
     port: 4173,
   },
 })

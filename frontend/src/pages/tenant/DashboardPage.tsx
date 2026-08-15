@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, CreditCard, Wrench, MessageSquareText, LayoutDashboard, User, Building2, ChevronDown, CheckCircle2, Clock, AlertCircle, Send, ShieldCheck, LogOut, Menu, X } from 'lucide-react';
+import { Calendar, CreditCard, Wrench, MessageSquareText, LayoutDashboard, User, Building2, ChevronDown, CheckCircle2, Clock, AlertCircle, Send, ShieldCheck, LogOut, Menu, X, Home, ExternalLink } from 'lucide-react';
 import type { AppUser, Booking, PropertyListing } from '../../types';
 
-const API_URL = 'http://localhost:5000/api';
+const API_URL = '/api';
 
 type MReqStatus = 'pending' | 'in_progress' | 'completed';
 interface MReq { id: string | number; title: string; description: string; status: MReqStatus; created_at?: string; }
@@ -151,6 +151,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   user,
   onLogout,
   onUpdateUser,
+  onBrowseMore,
 }) => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -348,22 +349,30 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             <Menu className="h-5 w-5" />
           </button>
 
-          {/* Logo text — visible on lg+ always, hidden on mobile to save space */}
-          <div className="hidden lg:flex items-center gap-3">
+          {/* Logo text — visible on lg+, clicking goes back to home/explore */}
+          <button
+            onClick={onBrowseMore}
+            className="hidden lg:flex items-center gap-3 hover:opacity-80 transition cursor-pointer"
+            title="Back to Browse Properties"
+          >
             <div className="bg-emerald-500 text-white p-1.5 rounded">
               <ShieldCheck className="h-5 w-5" />
             </div>
             <span className="font-bold text-gray-900 text-lg tracking-tight">
               Rent<span className="text-emerald-500">Hub</span>
             </span>
-          </div>
+          </button>
 
-          {/* Mobile: just the shield icon as logo mark */}
-          <div className="lg:hidden flex items-center">
+          {/* Mobile: shield icon as logo mark, also clickable */}
+          <button
+            onClick={onBrowseMore}
+            className="lg:hidden flex items-center hover:opacity-80 transition"
+            title="Back to home"
+          >
             <div className="bg-emerald-500 text-white p-1.5 rounded">
               <ShieldCheck className="h-4 w-4" />
             </div>
-          </div>
+          </button>
         </div>
 
         {/* Header zone — fills remaining space */}
@@ -395,10 +404,16 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   Account settings
                 </button>
                 <button
+                  onClick={onBrowseMore}
+                  className="block w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition"
+                >
+                  Browse Properties
+                </button>
+                <button
                   onClick={onLogout}
                   className="block w-full text-left px-4 py-3 text-sm text-red-600 font-semibold hover:bg-red-50 transition border-t border-gray-50"
                 >
-                  Logout
+                  Logout / Switch Account
                 </button>
               </div>
             )}
@@ -466,6 +481,27 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 <span>{item.label}</span>
               </button>
             ))}
+
+            {/* Divider */}
+            <div className="border-t border-[#1b3252] my-3" />
+
+            {/* Back to home — lets user browse properties or register another account */}
+            <button
+              onClick={onBrowseMore}
+              className="flex items-center gap-3 w-full px-4 py-3 rounded-lg text-sm font-semibold transition-all cursor-pointer hover:bg-[#1b3252] hover:text-white text-slate-400"
+            >
+              <Home className="h-5 w-5" />
+              <span>Browse Properties</span>
+            </button>
+
+            {/* Switch / new account — logs out so they can sign in as owner etc. */}
+            <button
+              onClick={onLogout}
+              className="flex items-center gap-3 w-full px-4 py-3 rounded-lg text-sm font-semibold transition-all cursor-pointer hover:bg-[#1b3252] hover:text-emerald-400 text-slate-400"
+            >
+              <ExternalLink className="h-5 w-5" />
+              <span>Switch Account</span>
+            </button>
           </nav>
 
           <button

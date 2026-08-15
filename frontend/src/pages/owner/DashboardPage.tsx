@@ -38,7 +38,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout }) 
   useEffect(() => {
     const fetchCount = async () => {
       try {
-        const res = await fetch('http://localhost:5000/api/maintenance');
+        const res = await fetch('/api/maintenance');
         if (res.ok) {
           const data: { status: string }[] = await res.json();
           setNewRequestCount(data.filter(r => r.status === 'pending' || r.status === 'NEW').length);

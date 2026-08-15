@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import type { AppUser } from '../../types';
 
-const API_URL = 'http://localhost:5000/api';
+const API_URL = '/api';
 
 // ── Mock lease contract data ────────────────────────────────────────────────
 // In production this comes from GET /api/esign/documents/:id
