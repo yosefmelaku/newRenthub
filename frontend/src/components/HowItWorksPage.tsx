@@ -1,6 +1,16 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { Building, FileText, Zap, Search, Key, Smartphone } from 'lucide-react';
+import { Building, FileText, Zap, Search, Key, Smartphone, ArrowLeft } from 'lucide-react';
+
+const BackBar: React.FC<{ onBack: () => void; label?: string }> = ({ onBack, label = 'Back to Home' }) => (
+  <div className="bg-white border-b border-slate-100 px-4 sm:px-6 lg:px-8 py-3">
+    <div className="max-w-6xl mx-auto">
+      <button onClick={onBack} className="inline-flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-emerald-700 transition group">
+        <ArrowLeft className="h-4 w-4 group-hover:-translate-x-0.5 transition-transform" />{label}
+      </button>
+    </div>
+  </div>
+);
 
 const ownerSteps = [
   { title: "Add & Segment Inventory", description: "List your assets with ease, categorizing them as Commercial Offices, Residential Villas, or Compact Studios.", icon: Building, img: "https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&q=80&w=800" },
@@ -14,12 +24,18 @@ const tenantSteps = [
   { title: "Portal Experience", description: "Manage everything: set up recurring payments, view documents, and report maintenance issues.", icon: Smartphone, img: "https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&q=80&w=800" },
 ];
 
-export const HowItWorksPage: React.FC = () => {
+interface HowItWorksPageProps {
+  onBack?: () => void;
+}
+
+export const HowItWorksPage: React.FC<HowItWorksPageProps> = ({ onBack }) => {
   const [activeTab, setActiveTab] = useState<'owner' | 'tenant'>('owner');
   const steps = activeTab === 'owner' ? ownerSteps : tenantSteps;
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-16 bg-slate-50 min-h-screen">
+    <div className="bg-slate-50 min-h-screen">
+      {onBack && <BackBar onBack={onBack} label="Back to Home" />}
+      <div className="max-w-6xl mx-auto px-6 py-16">
       <div className="text-center mb-16">
         <h1 className="text-4xl font-extrabold text-slate-900 mb-6">How it works</h1>
         <div className="inline-flex bg-white rounded-full p-1 border shadow-sm">
@@ -47,6 +63,7 @@ export const HowItWorksPage: React.FC = () => {
             </motion.div>
         ))}
       </div>
+    </div>
     </div>
   );
 };

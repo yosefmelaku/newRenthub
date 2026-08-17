@@ -1,7 +1,29 @@
 import React, { useState } from 'react';
-import { Check } from 'lucide-react';
+import { Check, ArrowLeft } from 'lucide-react';
 
-export const PricingPage: React.FC = () => {
+// ── Shared back bar ────────────────────────────────────────────────────────
+const BackBar: React.FC<{ onBack: () => void; label?: string }> = ({
+  onBack,
+  label = 'Back to Home',
+}) => (
+  <div className="bg-white border-b border-slate-100 px-4 sm:px-6 lg:px-8 py-3">
+    <div className="max-w-6xl mx-auto">
+      <button
+        onClick={onBack}
+        className="inline-flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-emerald-700 transition group"
+      >
+        <ArrowLeft className="h-4 w-4 group-hover:-translate-x-0.5 transition-transform" />
+        {label}
+      </button>
+    </div>
+  </div>
+);
+
+interface PricingPageProps {
+  onBack?: () => void;
+}
+
+export const PricingPage: React.FC<PricingPageProps> = ({ onBack }) => {
   const [units, setUnits] = useState(20);
   const [billing, setBilling] = useState<'monthly' | 'annual'>('monthly');
 
@@ -20,7 +42,9 @@ export const PricingPage: React.FC = () => {
   const premiumPrice = calculatePrice(basePricePremium);
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-16 bg-slate-50 min-h-screen">
+    <div className="bg-slate-50 min-h-screen">
+      {onBack && <BackBar onBack={onBack} label="Back to Home" />}
+      <div className="max-w-6xl mx-auto px-6 py-16">
       <div className="text-center mb-16">
         <h1 className="text-4xl font-extrabold text-slate-900 mb-4">Simple, transparent pricing</h1>
         <p className="text-slate-600 text-lg mb-8">Scale from 1 to 500+ units with ease.</p>
@@ -76,6 +100,7 @@ export const PricingPage: React.FC = () => {
             </div>
         ))}
       </div>
+    </div>
     </div>
   );
 };
