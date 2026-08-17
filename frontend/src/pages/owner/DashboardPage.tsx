@@ -11,7 +11,8 @@ import {
   Calendar,
   ChevronDown,
   CreditCard,
-  PenTool
+  PenTool,
+  Building2
 } from 'lucide-react';
 import { Sidebar, type SidebarItem } from '../../components/Sidebar';
 import { AccountingPage } from './AccountingPage';
@@ -20,6 +21,7 @@ import { RentGatewayPage } from './RentGatewayPage';
 import { ESignPage } from './ESignPage';
 import { FindTenantsPage } from './FindTenantsPage';
 import { MaintenancePage } from './MaintenancePage';
+import { MyPropertiesPage } from './MyPropertiesPage';
 import type { AppUser } from '../../types';
 
 interface DashboardPageProps {
@@ -56,13 +58,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout }) 
   };
 
   const menuItems: SidebarItem[] = [
-    { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="h-5 w-5" /> },
-    { id: 'accounting', label: 'Rental Accounting', icon: <Briefcase className="h-5 w-5" /> },
-    { id: 'tax-reporting', label: 'Tax Reporting', icon: <FileText className="h-5 w-5" /> },
-    { id: 'rent-gateway', label: 'Collect Rent', icon: <CreditCard className="h-5 w-5" /> },
-    { id: 'tenants', label: 'Find Tenants', icon: <Users className="h-5 w-5" /> },
-    { id: 'maintenance', label: 'Maintenance', icon: <Wrench className="h-5 w-5" /> },
-    { id: 'e-sign', label: 'E-Sign', icon: <PenTool className="h-5 w-5" /> },
+    { id: 'dashboard',      label: 'Dashboard',         icon: <LayoutDashboard className="h-5 w-5" /> },
+    { id: 'my-properties',  label: 'My Properties',     icon: <Building2       className="h-5 w-5" /> },
+    { id: 'accounting',     label: 'Rental Accounting', icon: <Briefcase       className="h-5 w-5" /> },
+    { id: 'tax-reporting',  label: 'Tax Reporting',     icon: <FileText        className="h-5 w-5" /> },
+    { id: 'rent-gateway',   label: 'Collect Rent',      icon: <CreditCard      className="h-5 w-5" /> },
+    { id: 'tenants',        label: 'Find Tenants',      icon: <Users           className="h-5 w-5" /> },
+    { id: 'maintenance',    label: 'Maintenance',       icon: <Wrench          className="h-5 w-5" /> },
+    { id: 'e-sign',         label: 'E-Sign',            icon: <PenTool         className="h-5 w-5" /> },
   ];
 
   const renderContent = () => {
@@ -86,6 +89,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout }) 
             </div>
           </div>
         );
+      case 'my-properties':
+        return <MyPropertiesPage />;
       case 'accounting':
         return <AccountingPage />;
       case 'tax-reporting':

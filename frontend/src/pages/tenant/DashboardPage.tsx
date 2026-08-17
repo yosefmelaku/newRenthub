@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, CreditCard, Wrench, MessageSquareText, LayoutDashboard, User, Building2, ChevronDown, CheckCircle2, Clock, AlertCircle, Send, ShieldCheck, LogOut, Menu, X, Home, ExternalLink } from 'lucide-react';
+import { Calendar, CreditCard, Wrench, MessageSquareText, User, ChevronDown, CheckCircle2, Clock, AlertCircle, Send, Menu } from 'lucide-react';
 import type { AppUser, Booking, PropertyListing } from '../../types';
+import { TenantSidebar, TENANT_NAV_ITEMS } from '../../components/TenantSidebar';
 
 const API_URL = '/api';
 
@@ -171,14 +172,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     setShowDropdown(false);
   };
 
-  const sidebarItems: { id: string; label: string; icon: React.ReactNode }[] = [
-    { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard className="h-5 w-5" /> },
-    { id: 'lease', label: 'My Lease & Property', icon: <Building2 className="h-5 w-5" /> },
-    { id: 'payments', label: 'Payments & Billing', icon: <CreditCard className="h-5 w-5" /> },
-    { id: 'maintenance', label: 'Maintenance Requests', icon: <Wrench className="h-5 w-5" /> },
-    { id: 'inbox', label: 'Inbox & Notifications', icon: <MessageSquareText className="h-5 w-5" /> },
-    { id: 'profile', label: 'Account Settings', icon: <User className="h-5 w-5" /> },
-  ];
+  const sidebarItems = TENANT_NAV_ITEMS;
 
   const renderTabContent = () => {
     switch (activeTab) {
@@ -331,51 +325,35 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   return (
     <div className="flex flex-col min-h-screen w-full font-sans bg-[#f8fafc]" id="renter-dashboard-container">
 
-      {/* ════════════════════════════════════════════════
-          TOP BAR — full width, single row
-          On desktop: logo zone (256px) + header zone (rest)
-          On mobile:  hamburger | page title | user avatar
-      ════════════════════════════════════════════════ */}
+      {/* ── TOP BAR ─────────────────────────────────────────────────────── */}
       <div className="flex items-stretch w-full shrink-0 h-16 z-30 relative">
 
-        {/* Logo zone — white, 256px on lg+, full-width-aware on mobile */}
+        {/* Logo zone — white, aligns with sidebar width on desktop */}
         <div className="flex items-center gap-3 px-5 bg-white border-b border-slate-200 border-r border-slate-100 shrink-0 w-16 lg:w-64">
           {/* Hamburger — mobile only */}
           <button
             className="lg:hidden text-slate-500 hover:text-slate-800 transition"
             onClick={() => setSidebarOpen(true)}
-            aria-label="Open menu"
+            aria-label="Open navigation menu"
           >
             <Menu className="h-5 w-5" />
           </button>
-
-          {/* Logo text — visible on lg+, clicking goes back to home/explore */}
+          {/* Logo — desktop */}
           <button
             onClick={onBrowseMore}
-            className="hidden lg:flex items-center gap-3 hover:opacity-80 transition cursor-pointer"
-            title="Back to Browse Properties"
+            className="hidden lg:flex items-center gap-3 hover:opacity-80 transition"
+            title="Back to RentHub marketplace"
           >
             <div className="bg-emerald-500 text-white p-1.5 rounded">
-              <ShieldCheck className="h-5 w-5" />
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
             </div>
             <span className="font-bold text-gray-900 text-lg tracking-tight">
               Rent<span className="text-emerald-500">Hub</span>
             </span>
           </button>
-
-          {/* Mobile: shield icon as logo mark, also clickable */}
-          <button
-            onClick={onBrowseMore}
-            className="lg:hidden flex items-center hover:opacity-80 transition"
-            title="Back to home"
-          >
-            <div className="bg-emerald-500 text-white p-1.5 rounded">
-              <ShieldCheck className="h-4 w-4" />
-            </div>
-          </button>
         </div>
 
-        {/* Header zone — fills remaining space */}
+        {/* Header zone */}
         <header className="flex-1 bg-white border-b border-slate-200 px-4 sm:px-6 flex items-center justify-between min-w-0">
           <h2 className="text-base sm:text-lg font-bold text-slate-800 truncate">
             {sidebarItems.find(item => item.id === activeTab)?.label ?? 'Dashboard'}
@@ -387,7 +365,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             onClick={() => setShowDropdown(!showDropdown)}
           >
             <User className="h-4 w-4 text-slate-500" />
-            {/* Name hidden on very small screens */}
             <span className="hidden sm:inline truncate max-w-[120px]">{user.name}</span>
             <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
 
@@ -413,7 +390,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                   onClick={onLogout}
                   className="block w-full text-left px-4 py-3 text-sm text-red-600 font-semibold hover:bg-red-50 transition border-t border-gray-50"
                 >
-                  Logout / Switch Account
+                  Sign Out
                 </button>
               </div>
             )}
@@ -421,99 +398,20 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         </header>
       </div>
 
-      {/* ════════════════════════════════════════════════
-          BODY — sidebar + content
-      ════════════════════════════════════════════════ */}
+      {/* ── BODY ────────────────────────────────────────────────────────── */}
       <div className="flex flex-1 min-h-0 relative">
 
-        {/* ── Mobile overlay backdrop ── */}
-        {sidebarOpen && (
-          <div
-            className="fixed inset-0 bg-black/40 z-40 lg:hidden"
-            onClick={() => setSidebarOpen(false)}
-          />
-        )}
+        {/* TenantSidebar handles its own backdrop and drawer logic */}
+        <TenantSidebar
+          activeTab={activeTab}
+          onTabChange={handleTabChange}
+          onGoHome={onBrowseMore}
+          onLogout={onLogout}
+          isOpen={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
+        />
 
-        {/* ── Sidebar nav ──
-            Desktop: static 256px column
-            Mobile:  fixed slide-in drawer from left, z-50
-        ── */}
-        <aside
-          className={`
-            bg-[#0e223d] text-slate-300 flex flex-col shrink-0
-            fixed inset-y-0 left-0 z-50 w-64 transition-transform duration-300
-            lg:static lg:translate-x-0 lg:z-auto lg:h-auto
-            ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-          `}
-        >
-          {/* Mobile drawer header — shows logo + close button */}
-          <div className="flex items-center justify-between px-5 h-16 border-b border-[#1b3252] lg:hidden">
-            <div className="flex items-center gap-3">
-              <div className="bg-emerald-500 text-white p-1.5 rounded">
-                <ShieldCheck className="h-4 w-4" />
-              </div>
-              <span className="font-bold text-white text-base tracking-tight">
-                Rent<span className="text-emerald-400">Hub</span>
-              </span>
-            </div>
-            <button
-              onClick={() => setSidebarOpen(false)}
-              className="text-slate-400 hover:text-white transition"
-              aria-label="Close menu"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-
-          {/* Nav items */}
-          <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
-            {sidebarItems.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => handleTabChange(item.id)}
-                className={`flex items-center gap-3 w-full px-4 py-3 rounded-lg text-sm font-semibold transition-all cursor-pointer ${
-                  activeTab === item.id
-                    ? 'bg-[#1b3252] text-white'
-                    : 'hover:bg-[#1b3252] hover:text-white text-slate-300'
-                }`}
-              >
-                {item.icon}
-                <span>{item.label}</span>
-              </button>
-            ))}
-
-            {/* Divider */}
-            <div className="border-t border-[#1b3252] my-3" />
-
-            {/* Back to home — lets user browse properties or register another account */}
-            <button
-              onClick={onBrowseMore}
-              className="flex items-center gap-3 w-full px-4 py-3 rounded-lg text-sm font-semibold transition-all cursor-pointer hover:bg-[#1b3252] hover:text-white text-slate-400"
-            >
-              <Home className="h-5 w-5" />
-              <span>Browse Properties</span>
-            </button>
-
-            {/* Switch / new account — logs out so they can sign in as owner etc. */}
-            <button
-              onClick={onLogout}
-              className="flex items-center gap-3 w-full px-4 py-3 rounded-lg text-sm font-semibold transition-all cursor-pointer hover:bg-[#1b3252] hover:text-emerald-400 text-slate-400"
-            >
-              <ExternalLink className="h-5 w-5" />
-              <span>Switch Account</span>
-            </button>
-          </nav>
-
-          <button
-            onClick={onLogout}
-            className="flex items-center gap-3 px-6 py-5 text-slate-400 hover:text-rose-400 transition text-sm font-medium border-t border-[#1b3252]"
-          >
-            <LogOut className="h-5 w-5" />
-            <span>Logout</span>
-          </button>
-        </aside>
-
-        {/* ── Main scrollable content ── */}
+        {/* Main scrollable content */}
         <main className="flex-1 overflow-y-auto p-4 sm:p-6">
           <div className="max-w-5xl w-full mx-auto">
             {renderTabContent()}

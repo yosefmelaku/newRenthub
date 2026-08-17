@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import type { PropertyListing, Booking, AppUser } from './types';
 import { Navbar } from './components/Navbar';
 import { ListingExplorer } from './components/ListingExplorer';
+import { BrowseRentalsPage } from './components/BrowseRentalsPage';
 import { PropertyDetailsModal } from './components/PropertyDetailsModal';
 import { CheckoutPaymentModal } from './components/CheckoutPaymentModal';
 import { DashboardPage as RenterDashboardPage } from './pages/tenant/DashboardPage';
