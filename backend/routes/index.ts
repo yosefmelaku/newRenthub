@@ -4,7 +4,7 @@ import { getAllListings, createListing } from '../controllers/listings.controlle
 import { createBooking, getBookingsByRenter, updateBookingStatus } from '../controllers/bookings.controller';
 import { createPayment } from '../controllers/payments.controller';
 import { getAllUsers, getUserById, createUser } from '../controllers/users.controller';
-import { getAllMaintenanceRequests, createMaintenanceRequest, submitMaintenanceTicket } from '../controllers/maintenance.controller';
+import { getAllMaintenanceRequests, createMaintenanceRequest, submitMaintenanceTicket, getTenantRentedProperties } from '../controllers/maintenance.controller';
 import { registerProperty } from '../controllers/properties.controller';
 import { createLease } from '../controllers/leases.controller';
 import { getPendingApprovals, getRentalsMatrix } from '../controllers/admin.controller';

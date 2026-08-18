@@ -1,126 +1,688 @@
-import React, { useState, useEffect } from 'react';
-import { Calendar, CreditCard, Wrench, MessageSquareText, User, ChevronDown, CheckCircle2, Clock, AlertCircle, Send, Menu } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import {
+  Calendar, CreditCard, Wrench, MessageSquareText, User,
+  ChevronDown, CheckCircle2, Clock, AlertCircle, Send,
+  Menu, Building, AlertTriangle, CheckSquare, Loader2,
+  ShieldAlert, Trash2, X,
+} from 'lucide-react';
 import type { AppUser, Booking, PropertyListing } from '../../types';
 import { TenantSidebar, TENANT_NAV_ITEMS } from '../../components/TenantSidebar';
 
 const API_URL = '/api';
 
-type MReqStatus = 'pending' | 'in_progress' | 'completed';
-interface MReq { id: string | number; title: string; description: string; status: MReqStatus; created_at?: string; }
+// ─────────────────────────────────────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────────────────────────────────────
 
-const statusStyle: Record<MReqStatus, { label: string; cls: string; icon: React.ReactNode }> = {
-  pending:     { label: 'Pending',     cls: 'bg-amber-50 text-amber-700 border-amber-200',   icon: <Clock className="h-3.5 w-3.5" /> },
-  in_progress: { label: 'In Progress', cls: 'bg-blue-50 text-blue-700 border-blue-200',      icon: <AlertCircle className="h-3.5 w-3.5" /> },
+type MReqStatus = 'pending' | 'in_progress' | 'completed';
+type Severity   = 'low' | 'medium' | 'emergency';
+
+interface MReq {
+  id: string | number;
+  title: string;
+  description: string;
+  status: MReqStatus;
+  property_title?: string;
+  severity?: Severity;
+  created_at?: string;
+  // Flag so we can highlight newly added rows
+  isNew?: boolean;
+}
+
+interface RentedProperty {
+  id: string | number;
+  title: string;
+  address: string;
+  type: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Fallback sample properties — used when the API has no active leases
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SAMPLE_PROPERTIES: RentedProperty[] = [
+  { id: 'sample-1', title: 'Luxury Villa',     address: '123 Sunrise Valley Lane, Beverly Hills', type: 'Villa'     },
+  { id: 'sample-2', title: 'Downtown Studio',  address: 'Unit B, 88 Commerce Blvd, Chicago',      type: 'Studio'    },
+  { id: 'sample-3', title: 'Garden Apartment', address: '9 Palm Street, Unit 7, Miami',            type: 'Apartment' },
+];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────────────────────
+
+const STATUS_STYLE: Record<MReqStatus, { label: string; cls: string; icon: React.ReactNode }> = {
+  pending:     { label: 'Pending',     cls: 'bg-amber-50   text-amber-700   border-amber-200',   icon: <Clock        className="h-3.5 w-3.5" /> },
+  in_progress: { label: 'In Progress', cls: 'bg-blue-50    text-blue-700    border-blue-200',    icon: <AlertCircle  className="h-3.5 w-3.5" /> },
   completed:   { label: 'Completed',   cls: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: <CheckCircle2 className="h-3.5 w-3.5" /> },
 };
 
+const SEVERITY_CONFIG: Record<Severity, { label: string; emoji: string; inactive: string; active: string }> = {
+  low:       { label: 'Low',       emoji: '🟢', inactive: 'border-gray-200 text-gray-500 hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700', active: 'border-emerald-500 bg-emerald-50 text-emerald-700 shadow-sm' },
+  medium:    { label: 'Medium',    emoji: '🟡', inactive: 'border-gray-200 text-gray-500 hover:border-amber-400  hover:bg-amber-50  hover:text-amber-700',    active: 'border-amber-400   bg-amber-50   text-amber-700   shadow-sm' },
+  emergency: { label: 'Emergency', emoji: '🔴', inactive: 'border-gray-200 text-gray-500 hover:border-rose-400   hover:bg-rose-50   hover:text-rose-700',    active: 'border-rose-500    bg-rose-50    text-rose-700    shadow-sm' },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Slide-in Toast component — fixed top-right corner
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface ToastProps {
+  message: string;
+  type: 'success' | 'error';
+  visible: boolean;
+  onDismiss: () => void;
+}
+
+const Toast: React.FC<ToastProps> = ({ message, type, visible, onDismiss }) => (
+  <div
+    role="alert"
+    aria-live="polite"
+    className={`
+      fixed top-5 right-5 z-[9999] flex items-start gap-3
+      bg-white border rounded-2xl shadow-2xl px-5 py-4 max-w-sm w-full
+      transition-all duration-500 ease-out
+      ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4 pointer-events-none'}
+      ${type === 'success' ? 'border-emerald-300' : 'border-rose-300'}
+    `}
+  >
+    {/* Left accent bar */}
+    <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-l-2xl ${type === 'success' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+
+    {/* Icon */}
+    <div className={`shrink-0 p-1.5 rounded-full mt-0.5 ${type === 'success' ? 'bg-emerald-100' : 'bg-rose-100'}`}>
+      {type === 'success'
+        ? <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+        : <ShieldAlert  className="h-4 w-4 text-rose-600" />}
+    </div>
+
+    {/* Text */}
+    <div className="flex-1 min-w-0">
+      <p className={`text-sm font-bold ${type === 'success' ? 'text-emerald-800' : 'text-rose-800'}`}>
+        {type === 'success' ? 'Request Sent!' : 'Submission Failed'}
+      </p>
+      <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{message}</p>
+    </div>
+
+    {/* Dismiss button */}
+    <button
+      onClick={onDismiss}
+      className="shrink-0 text-gray-300 hover:text-gray-500 transition mt-0.5"
+      aria-label="Dismiss notification"
+    >
+      <X className="h-4 w-4" />
+    </button>
+  </div>
+);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main Maintenance Tab
+// ─────────────────────────────────────────────────────────────────────────────
+
 const TenantMaintenanceTab: React.FC<{ user: AppUser }> = ({ user }) => {
-  const [title, setTitle] = useState('');
+
+  // ── Form state — fully controlled inputs ─────────────────────────────────
+  const [propertyId,  setPropertyId]  = useState('');
+  const [title,       setTitle]       = useState('');
   const [description, setDescription] = useState('');
+  const [severity,    setSeverity]    = useState<Severity>('low');
+
+  // ── Data state ────────────────────────────────────────────────────────────
+  const [properties,   setProperties]  = useState<RentedProperty[]>([]);
+  const [loadingProps, setLoadingProps] = useState(true);
+  const [myRequests,   setMyRequests]  = useState<MReq[]>([]);
+
+  // ── Submission state ──────────────────────────────────────────────────────
   const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-  const [myRequests, setMyRequests] = useState<MReq[]>([]);
+  const [formError,  setFormError]  = useState('');
+
+  // ── Toast notification state ──────────────────────────────────────────────
+  // showNotification controls the slide-in; the timer ref lets us cancel
+  // auto-dismiss if the user manually closes the toast first.
+  const [showNotification, setShowNotification] = useState(false);
+  const [toastMsg,         setToastMsg]         = useState('');
+  const [toastType,        setToastType]        = useState<'success' | 'error'>('success');
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
+
+  /** Show a toast and auto-dismiss after 4 seconds. */
+  const triggerToast = useCallback((msg: string, type: 'success' | 'error') => {
+    setToastMsg(msg);
+    setToastType(type);
+    setShowNotification(true);
+    // Clear any existing timer before starting a new one
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setShowNotification(false), 4000);
+  }, []);
+
+  const dismissToast = () => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setShowNotification(false);
+  };
+
+  // Cleanup on unmount
+  useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
+
+  // ── Data fetching ─────────────────────────────────────────────────────────
+
+  const fetchRentedProperties = async () => {
+    setLoadingProps(true);
+    try {
+      const res = await fetch(
+        `${API_URL}/tenant/my-rented-properties?tenantId=${encodeURIComponent(user.email ?? '')}`
+      );
+      if (res.ok) {
+        const data: RentedProperty[] = await res.json();
+        setProperties(data.length > 0 ? data : SAMPLE_PROPERTIES);
+      } else {
+        setProperties(SAMPLE_PROPERTIES);
+      }
+    } catch {
+      setProperties(SAMPLE_PROPERTIES);
+    } finally {
+      setLoadingProps(false);
+    }
+  };
 
   const fetchMyRequests = async () => {
     try {
       const res = await fetch(`${API_URL}/maintenance`);
-      if (res.ok) {
-        const all: MReq[] = await res.json();
-        // Show only this tenant's requests (filter by renter_id field if available, else show all)
-        setMyRequests(all);
-      }
+      if (res.ok) setMyRequests(await res.json());
     } catch { /* silent */ }
   };
 
-  useEffect(() => { fetchMyRequests(); }, []);
+  useEffect(() => {
+    fetchRentedProperties();
+    fetchMyRequests();
+  }, []);
+
+  // ── Submit & reset handler ────────────────────────────────────────────────
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !description.trim()) return;
+    setFormError('');
+
+    // Client-side validation
+    if (!propertyId)         { setFormError('Please select the property you are renting.');    return; }
+    if (!title.trim())       { setFormError('Please enter an issue title.');                   return; }
+    if (!description.trim()) { setFormError('Please describe the problem in detail.');         return; }
+
     setSubmitting(true);
+
     try {
-      const res = await fetch(`${API_URL}/maintenance`, {
-        method: 'POST',
+      const res = await fetch(`${API_URL}/maintenance/submit`, {
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title: title.trim(),
-          description: description.trim(),
-          property_id: null,
-          status: 'pending',
-          viewable_by: 'owner',
-          renter_id: user.email,
-          renter_name: user.name,
+          property_id:  propertyId,
+          issue_title:  title.trim(),
+          description:  description.trim(),
+          severity,
+          tenant_id:    user.email,
+          renter_name:  user.name,
+          status:       'pending',
+          viewable_by:  'owner',
         }),
       });
-      if (res.ok) {
+
+      if (res.ok || res.status === 201) {
+        // ── Step 1: Instantly clear all form fields ────────────────────────
+        // Setting state back to empty strings removes the text from the
+        // controlled inputs immediately — no stale values remain on screen.
+        setPropertyId('');
         setTitle('');
         setDescription('');
-        setSubmitted(true);
-        setTimeout(() => setSubmitted(false), 4000);
-        fetchMyRequests();
+        setSeverity('low');
+        setFormError('');
+
+        // ── Step 2: Optimistically prepend the new ticket to the ledger ───
+        // This makes the list update instantly without waiting for a
+        // re-fetch, giving the user immediate visual confirmation.
+        const selectedProp = properties.find(p => String(p.id) === String(propertyId));
+        const optimisticTicket: MReq = {
+          id:            `opt-${Date.now()}`,
+          title:         title.trim(),
+          description:   description.trim(),
+          status:        'pending',
+          severity,
+          property_title: selectedProp ? `${selectedProp.title} — ${selectedProp.address}` : undefined,
+          created_at:    new Date().toISOString(),
+          isNew:         true,
+        };
+        setMyRequests(prev => [optimisticTicket, ...prev]);
+
+        // ── Step 3: Fire the slide-in success toast ────────────────────────
+        triggerToast(
+          'Success! Your request has been sent to the property owner.',
+          'success'
+        );
+
+        // ── Step 4: Background sync to get the real server-assigned id ────
+        // We do this silently so the instant UI update is never blocked.
+        setTimeout(fetchMyRequests, 1500);
+
+      } else {
+        const body = await res.json().catch(() => ({}));
+        const msg  = body.message ?? 'Submission failed. Please try again.';
+        setFormError(msg);
+        triggerToast(msg, 'error');
       }
-    } catch { /* silent */ } finally {
+    } catch {
+      const msg = 'Network error — please check your connection and retry.';
+      setFormError(msg);
+      triggerToast(msg, 'error');
+    } finally {
       setSubmitting(false);
     }
   };
 
+  const isValid = propertyId && title.trim() && description.trim();
+
+  // ─────────────────────────────────────────────────────────────────────────
   return (
-    <div className="animate-fadeIn space-y-6">
-      {/* Submit Form */}
-      <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm space-y-4">
-        <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-          <Wrench className="h-5 w-5 text-amber-500" /> Submit Maintenance Request
-        </h3>
-        <p className="text-sm text-gray-500">Your request will be sent directly to the property owner.</p>
+    <>
+      {/* ── Slide-in Toast — fixed to viewport top-right ── */}
+      <Toast
+        message={toastMsg}
+        type={toastType}
+        visible={showNotification}
+        onDismiss={dismissToast}
+      />
 
-        {submitted && (
-          <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded-xl text-sm font-semibold">
-            <CheckCircle2 className="h-4 w-4" /> Request sent! The owner has been notified.
+      <div className="animate-fadeIn space-y-6">
+
+        {/* ── Maintenance Request Form ── */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+
+          {/* Card header bar */}
+          <div className="bg-gradient-to-r from-slate-800 to-slate-700 px-6 py-4 flex items-center gap-3">
+            <div className="bg-amber-400/20 p-2 rounded-xl">
+              <Wrench className="h-5 w-5 text-amber-300" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white">Submit Maintenance Request</h3>
+              <p className="text-xs text-slate-400">Ticket is routed directly to your property owner</p>
+            </div>
           </div>
-        )}
 
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <div>
-            <label className="block text-xs font-bold text-gray-500 mb-1 uppercase tracking-wider">Issue Title</label>
+          <div className="p-6 space-y-5">
+
+            {/* Inline form error */}
+            {formError && (
+              <div className="flex items-start gap-2.5 bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-xl text-sm font-semibold">
+                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                <span>{formError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+
+              {/* ── 1. Property selector ── */}
+              <div className="space-y-1.5">
+                <label htmlFor="property-select" className="block text-xs font-bold text-gray-500 uppercase tracking-wider">
+                  Select Your Rented Property / Space
+                  <span className="text-rose-400 ml-1">*</span>
+                </label>
+                <div className="relative">
+                  <Building className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                  <select
+                    id="property-select"
+                    required
+                    value={propertyId}
+                    onChange={e => { setPropertyId(e.target.value); setFormError(''); }}
+                    disabled={loadingProps}
+                    className={`w-full border rounded-xl pl-10 pr-10 py-3 text-sm appearance-none bg-white
+                      focus:outline-none focus:ring-2 transition cursor-pointer
+                      ${propertyId
+                        ? 'border-emerald-400 text-gray-900 focus:border-emerald-500 focus:ring-emerald-500/10'
+                        : 'border-gray-200 text-gray-400 focus:border-slate-400 focus:ring-slate-400/10'}
+                      ${loadingProps ? 'cursor-wait opacity-60' : ''}`}
+                  >
+                    <option value="">
+                      {loadingProps ? 'Loading your properties…' : '— Select the property this issue relates to —'}
+                    </option>
+                    {properties.map(p => (
+                      <option key={p.id} value={String(p.id)}>
+                        {p.title} — {p.address}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none">
+                    {loadingProps
+                      ? <Loader2 className="h-4 w-4 text-gray-400 animate-spin" />
+                      : <ChevronDown className="h-4 w-4 text-gray-400" />}
+                  </div>
+                </div>
+                {propertyId && (
+                  <p className="text-[11px] text-emerald-600 font-semibold flex items-center gap-1">
+                    <CheckSquare className="h-3 w-3" /> Property selected — ticket will be routed to owner
+                  </p>
+                )}
+              </div>
+
+              {/* ── 2. Issue title — controlled input ── */}
+              <div className="space-y-1.5">
+                <label htmlFor="issue-title" className="block text-xs font-bold text-gray-500 uppercase tracking-wider">
+                  Issue Title <span className="text-rose-400">*</span>
+                </label>
+                <input
+                  id="issue-title"
+                  type="text"
+                  required
+                  // value bound directly to state — React fully controls this input
+                  value={title}
+                  onChange={e => { setTitle(e.target.value); setFormError(''); }}
+                  placeholder="e.g. Leaking faucet in bathroom"
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm
+                    focus:outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-500/10 transition
+                    placeholder:text-gray-300"
+                />
+                {/* Live char counter */}
+                <p className={`text-right text-[10px] font-medium ${title.length > 80 ? 'text-rose-500' : 'text-gray-300'}`}>
+                  {title.length} / 100
+                </p>
+              </div>
+
+              {/* ── 3. Description — controlled textarea ── */}
+              <div className="space-y-1.5">
+                <label htmlFor="issue-desc" className="block text-xs font-bold text-gray-500 uppercase tracking-wider">
+                  Description <span className="text-rose-400">*</span>
+                </label>
+                <textarea
+                  id="issue-desc"
+                  required
+                  rows={4}
+                  // value bound directly to state — ensures clearing works
+                  value={description}
+                  onChange={e => { setDescription(e.target.value); setFormError(''); }}
+                  placeholder="Describe the problem — location, when it started, any photos you can attach…"
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm resize-none
+                    focus:outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-500/10 transition
+                    placeholder:text-gray-300"
+                />
+              </div>
+
+              {/* ── 4. Severity selector ── */}
+              <div className="space-y-2">
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">
+                  Severity Level
+                </label>
+                <div className="grid grid-cols-3 gap-2.5">
+                  {(Object.entries(SEVERITY_CONFIG) as [Severity, typeof SEVERITY_CONFIG[Severity]][]).map(([key, cfg]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setSeverity(key)}
+                      className={`flex items-center justify-center gap-2 border rounded-xl py-2.5 text-sm font-semibold transition-all
+                        ${severity === key ? cfg.active : cfg.inactive}`}
+                    >
+                      <span className="text-base leading-none">{cfg.emoji}</span>
+                      {cfg.label}
+                    </button>
+                  ))}
+                </div>
+                {severity === 'emergency' && (
+                  <div className="flex items-center gap-2 bg-rose-50 border border-rose-200 px-3 py-2 rounded-xl">
+                    <ShieldAlert className="h-3.5 w-3.5 text-rose-600 shrink-0" />
+                    <p className="text-xs text-rose-700 font-semibold">
+                      Emergency tickets are flagged for immediate owner response.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* ── Submit button ── */}
+              <button
+                type="submit"
+                disabled={submitting || !isValid}
+                className="w-full flex items-center justify-center gap-2.5
+                  bg-slate-800 hover:bg-slate-700 active:bg-slate-900
+                  disabled:bg-gray-100 disabled:text-gray-300 disabled:cursor-not-allowed
+                  text-white font-bold py-4 rounded-xl text-sm transition shadow-sm"
+              >
+                {submitting ? (
+                  <><Loader2 className="h-4 w-4 animate-spin" /> Sending to Owner…</>
+                ) : (
+                  <><Send className="h-4 w-4" /> Send Maintenance Request to Owner</>
+                )}
+              </button>
+
+            </form>
+          </div>
+        </div>
+
+        {/* ── My Tickets Ledger ── */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+
+          {/* Ledger header */}
+          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+            <h4 className="font-bold text-gray-800 flex items-center gap-2">
+              <CheckSquare className="h-4 w-4 text-slate-600" />
+              My Tickets
+              <span className="ml-1 text-xs font-bold bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">
+                {myRequests.length}
+              </span>
+            </h4>
+            {myRequests.length > 0 && (
+              <button
+                onClick={fetchMyRequests}
+                className="text-xs text-gray-400 hover:text-gray-600 font-semibold transition"
+              >
+                Refresh
+              </button>
+            )}
+          </div>
+
+          <div className="p-4">
+            {myRequests.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-10 text-center gap-3">
+                <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center">
+                  <Trash2 className="h-5 w-5 text-gray-300" />
+                </div>
+                <p className="text-sm font-semibold text-gray-400">No requests submitted yet.</p>
+                <p className="text-xs text-gray-300">Your tickets will appear here once submitted.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {myRequests.map((r, i) => {
+                  const s = STATUS_STYLE[r.status] ?? STATUS_STYLE.pending;
+                  return (
+                    <div
+                      key={r.id}
+                      // New ticket rows get a brief highlight ring that fades
+                      className={`flex items-start justify-between gap-3 border rounded-xl p-4 transition-all duration-700
+                        ${i === 0 && r.isNew
+                          ? 'border-emerald-300 bg-emerald-50/50 shadow-sm'
+                          : 'border-gray-100 hover:border-gray-200'}`}
+                    >
+                      <div className="space-y-1.5 min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-semibold text-sm text-gray-900 truncate">{r.title}</p>
+                          {r.severity && r.severity !== 'low' && (
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border
+                              ${r.severity === 'emergency'
+                                ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+                              {SEVERITY_CONFIG[r.severity].emoji} {SEVERITY_CONFIG[r.severity].label}
+                            </span>
+                          )}
+                          {i === 0 && r.isNew && (
+                            <span className="text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full">
+                              Just sent
+                            </span>
+                          )}
+                        </div>
+                        {r.property_title && (
+                          <p className="text-[11px] text-indigo-600 font-semibold flex items-center gap-1">
+                            <Building className="h-3 w-3" /> {r.property_title}
+                          </p>
+                        )}
+                        <p className="text-xs text-gray-500 line-clamp-2">{r.description}</p>
+                        {r.created_at && (
+                          <p className="text-[10px] text-gray-300">
+                            {new Date(r.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                        )}
+                      </div>
+                      <span className={`flex items-center gap-1 shrink-0 text-xs font-semibold border px-2.5 py-1 rounded-full ${s.cls}`}>
+                        {s.icon} {s.label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+      </div>
+    </>
+  );
+};
+        <form onSubmit={handleSubmit} className="space-y-4">
+
+          {/* ── 1. Property selector — THE FIX ─────────────────────────── */}
+          {/*
+           * This dropdown solves the core bug: without a property_id the
+           * maintenance ticket could not be assigned to the correct owner.
+           * The selected value is sent as `property_id` in the POST body
+           * so the backend can JOIN to properties → find the owner_id →
+           * and route notifications/tickets to the right person.
+           */}
+          <div className="space-y-1.5">
+            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">
+              Select Your Rented Property / Space
+              <span className="text-rose-400 ml-1">*</span>
+            </label>
+            <div className="relative">
+              <Building className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+              <select
+                required
+                value={propertyId}
+                onChange={e => setPropertyId(e.target.value)}
+                disabled={loadingProps}
+                className={`w-full border rounded-xl pl-10 pr-10 py-3 text-sm appearance-none bg-white
+                  focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 transition
+                  ${propertyId ? 'border-emerald-400 text-gray-900' : 'border-gray-200 text-gray-400'}
+                  ${loadingProps ? 'cursor-wait' : 'cursor-pointer'}`}
+              >
+                <option value="">
+                  {loadingProps ? 'Loading your properties…' : '— Choose the property this issue relates to —'}
+                </option>
+                {properties.map(p => (
+                  <option key={p.id} value={p.id}>
+                    {p.title} — {p.address}
+                  </option>
+                ))}
+              </select>
+              <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none">
+                {loadingProps
+                  ? <Loader2 className="h-4 w-4 text-gray-400 animate-spin" />
+                  : <ChevronDown className="h-4 w-4 text-gray-400" />}
+              </div>
+            </div>
+            {propertyId && (
+              <p className="text-[11px] text-emerald-600 font-semibold flex items-center gap-1 mt-1">
+                <CheckSquare className="h-3 w-3" />
+                Property selected — ticket will be routed to the owner
+              </p>
+            )}
+          </div>
+
+          {/* ── 2. Issue title ── */}
+          <div className="space-y-1.5">
+            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">
+              Issue Title <span className="text-rose-400">*</span>
+            </label>
             <input
               type="text" required
               placeholder="e.g. Leaking faucet in bathroom"
-              value={title} onChange={e => setTitle(e.target.value)}
-              className="w-full border border-gray-200 rounded-xl p-3 text-sm focus:outline-none focus:border-emerald-500"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm
+                focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 transition"
             />
           </div>
-          <div>
-            <label className="block text-xs font-bold text-gray-500 mb-1 uppercase tracking-wider">Description</label>
+
+          {/* ── 3. Description ── */}
+          <div className="space-y-1.5">
+            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">
+              Description <span className="text-rose-400">*</span>
+            </label>
             <textarea
               required rows={3}
-              placeholder="Describe the problem in detail..."
-              value={description} onChange={e => setDescription(e.target.value)}
-              className="w-full border border-gray-200 rounded-xl p-3 text-sm focus:outline-none focus:border-emerald-500 resize-none"
+              placeholder="Describe the problem in detail — location, when it started, any photos…"
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm resize-none
+                focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 transition"
             />
           </div>
+
+          {/* ── 4. Severity selector ── */}
+          <div className="space-y-2">
+            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">
+              Severity Level
+            </label>
+            <div className="flex gap-3">
+              {(Object.entries(SEVERITY_CONFIG) as [Severity, typeof SEVERITY_CONFIG[Severity]][]).map(([key, cfg]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setSeverity(key)}
+                  className={`flex-1 flex items-center justify-center gap-2 border rounded-xl py-2.5 text-sm transition
+                    ${severity === key ? cfg.activeCls : cfg.cls}`}
+                >
+                  <span>{cfg.icon}</span>
+                  <span className="font-semibold">{cfg.label}</span>
+                </button>
+              ))}
+            </div>
+            {severity === 'emergency' && (
+              <p className="text-xs text-rose-600 font-semibold flex items-center gap-1 bg-rose-50 border border-rose-200 px-3 py-2 rounded-lg">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                Emergency tickets are flagged for immediate owner attention.
+              </p>
+            )}
+          </div>
+
+          {/* ── Submit button ── */}
           <button
-            type="submit" disabled={submitting || !title.trim() || !description.trim()}
-            className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl text-sm transition"
+            type="submit"
+            disabled={submitting || !isValid}
+            className="w-full flex items-center justify-center gap-2
+              bg-emerald-600 hover:bg-emerald-700
+              disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed
+              text-white font-bold py-3.5 rounded-xl text-sm transition shadow-sm"
           >
-            <Send className="h-4 w-4" />
-            {submitting ? 'Sending...' : 'Send Request to Owner'}
+            {submitting
+              ? <><Loader2 className="h-4 w-4 animate-spin" /> Sending…</>
+              : <><Send className="h-4 w-4" /> Send Maintenance Request to Owner</>}
           </button>
         </form>
       </div>
 
-      {/* My Tickets */}
+      {/* ── My Tickets list ── */}
       <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm space-y-3">
-        <h4 className="font-bold text-gray-800">My Tickets ({myRequests.length})</h4>
+        <h4 className="font-bold text-gray-800 flex items-center gap-2">
+          <CheckSquare className="h-4 w-4 text-emerald-600" />
+          My Tickets ({myRequests.length})
+        </h4>
         {myRequests.length === 0 ? (
           <p className="text-sm text-gray-400">No requests submitted yet.</p>
         ) : (
           <div className="space-y-3">
             {myRequests.map(r => {
-              const s = statusStyle[r.status] ?? statusStyle.pending;
+              const s = STATUS_STYLE[r.status] ?? STATUS_STYLE.pending;
               return (
                 <div key={r.id} className="flex items-start justify-between gap-3 border border-gray-100 rounded-xl p-4">
-                  <div className="space-y-1 min-w-0">
+                  <div className="space-y-1 min-w-0 flex-1">
                     <p className="font-semibold text-sm text-gray-900 truncate">{r.title}</p>
+                    {r.property_title && (
+                      <p className="text-[11px] text-indigo-600 font-semibold flex items-center gap-1">
+                        <Building className="h-3 w-3" /> {r.property_title}
+                      </p>
+                    )}
                     <p className="text-xs text-gray-500 line-clamp-2">{r.description}</p>
                   </div>
                   <span className={`flex items-center gap-1 shrink-0 text-xs font-semibold border px-2.5 py-1 rounded-full ${s.cls}`}>

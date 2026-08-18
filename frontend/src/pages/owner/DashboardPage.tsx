@@ -20,6 +20,7 @@ import { TaxReportingPage } from './TaxReportingPage';
 import { RentGatewayPage } from './RentGatewayPage';
 import { ESignPage } from './ESignPage';
 import { FindTenantsPage } from './FindTenantsPage';
+import type { Applicant } from './FindTenantsPage';
 import { MaintenancePage } from './MaintenancePage';
 import { MyPropertiesPage } from './MyPropertiesPage';
 import type { AppUser } from '../../types';
@@ -98,7 +99,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout }) 
       case 'rent-gateway':
         return <RentGatewayPage />;
       case 'tenants':
-        return <FindTenantsPage />;
+        return (
+          <FindTenantsPage
+            onNavigateToESign={(_applicant: Applicant) => setActiveSection('e-sign')}
+          />
+        );
       case 'maintenance':
         return <MaintenancePage />;
       case 'e-sign':
