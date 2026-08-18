@@ -189,7 +189,7 @@ const CanvasPad: React.FC<{ onChange: (url: string | null) => void }> = ({ onCha
 
 interface LeasePrepProps {
   config: LeaseConfig;
-  onChange: (key: keyof LeaseConfig, value: string) => void;
+  onChange: (key: keyof LeaseConfig, value: string | number) => void;
   onGenerate: () => void;
 }
 
@@ -220,25 +220,37 @@ const LeasePrepForm: React.FC<LeasePrepProps> = ({ config, onChange, onGenerate 
           <h3 className="text-base font-bold text-zinc-900">Contract Configuration</h3>
         </div>
 
-        {/* Read-only fields */}
-        {[
-          { label: 'Tenant Name',    value: config.tenantName,    key: 'tenantName'    },
-          { label: 'Property Title', value: config.propertyTitle, key: 'propertyTitle' },
-        ].map(f => (
-          <div key={f.key} className="space-y-1.5">
-            <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider">{f.label}</label>
-            <input
-              readOnly value={f.value}
-              className="w-full border border-zinc-200 rounded-xl px-4 py-2.5 text-sm bg-zinc-50 text-zinc-500 cursor-not-allowed"
-            />
-          </div>
-        ))}
+        {/* Editable fields */}
+        <div className="space-y-1.5">
+          <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider">Tenant Name <span className="text-rose-400">*</span></label>
+          <input
+            type="text"
+            value={config.tenantName}
+            onChange={e => onChange('tenantName', e.target.value)}
+            placeholder="Tenant's Full Name"
+            className="w-full border border-zinc-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition bg-white text-zinc-800"
+          />
+        </div>
 
         <div className="space-y-1.5">
-          <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider">Base Monthly Rent (USD)</label>
+          <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider">Property Title <span className="text-rose-400">*</span></label>
           <input
-            readOnly value={`$${config.monthlyRent.toLocaleString()}`}
-            className="w-full border border-zinc-200 rounded-xl px-4 py-2.5 text-sm bg-zinc-50 text-zinc-500 cursor-not-allowed"
+            type="text"
+            value={config.propertyTitle}
+            onChange={e => onChange('propertyTitle', e.target.value)}
+            placeholder="e.g. Sunrise Villa Block A"
+            className="w-full border border-zinc-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition bg-white text-zinc-800"
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider">Base Monthly Rent (USD) <span className="text-rose-400">*</span></label>
+          <input
+            type="number"
+            value={config.monthlyRent || ''}
+            onChange={e => onChange('monthlyRent', Number(e.target.value))}
+            placeholder="e.g. 3000"
+            className="w-full border border-zinc-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition bg-white text-zinc-800"
           />
         </div>
 
@@ -286,7 +298,7 @@ const LeasePrepForm: React.FC<LeasePrepProps> = ({ config, onChange, onGenerate 
 
         <button
           onClick={onGenerate}
-          disabled={!config.startDate || !config.endDate || !config.template}
+          disabled={!config.tenantName?.trim() || !config.propertyTitle?.trim() || !config.monthlyRent || !config.startDate || !config.endDate || !config.template}
           className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-zinc-300 disabled:cursor-not-allowed
             text-white font-bold text-sm py-3.5 rounded-xl transition shadow-sm"
         >
@@ -618,7 +630,7 @@ export const ESignPage: React.FC = () => {
     template:      '',
   });
 
-  const handleConfigChange = (key: keyof LeaseConfig, value: string) =>
+  const handleConfigChange = (key: keyof LeaseConfig, value: string | number) =>
     setLeaseConfig(prev => ({ ...prev, [key]: value }));
 
   const handleGenerate = () => {
