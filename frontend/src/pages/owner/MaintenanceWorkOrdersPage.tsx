@@ -141,3 +141,122 @@ export const MaintenanceWorkOrdersPage: React.FC = () => {
   const [orders, setOrders] = useState<WorkOrder[]>(mockOrders);
   const [selectedOrder, setSelectedOrder] = useState<WorkOrder | null>(null);
   const [showDispatchModal, setShowDispatchModal] = useState(false);
+
+
+  const moveOrder = (orderId: string, newStatus: Status) => {
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
+  };
+
+  const ordersForColumn = (col: Status) => orders.filter(o => o.status === col);
+
+  return (
+    <div className="space-y-6">
+      <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+        <Wrench className="h-5 w-5 text-emerald-600" /> Maintenance Work Orders
+      </h2>
+
+      {/* Kanban board */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        {statusColumns.map(col => (
+          <div key={col.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+            {/* Column header */}
+            <div className={`flex items-center gap-2 px-4 py-3 text-white text-sm font-bold ${col.color}`}>
+              {col.icon}
+              <span>{col.label}</span>
+              <span className="ml-auto bg-white/20 px-2 py-0.5 rounded-full text-xs">
+                {ordersForColumn(col.id).length}
+              </span>
+            </div>
+
+            {/* Cards */}
+            <div className="p-3 space-y-3 min-h-[120px]">
+              {ordersForColumn(col.id).map(order => {
+                const sev = severityConfig[order.severity];
+                return (
+                  <div
+                    key={order.id}
+                    onClick={() => setSelectedOrder(order)}
+                    className="bg-slate-50 border border-slate-200 rounded-xl p-3 cursor-pointer hover:shadow-md transition space-y-2"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="font-semibold text-slate-900 text-sm leading-tight">{order.title}</p>
+                      <span className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${sev.cls} shrink-0`}>
+                        {sev.icon} {sev.label}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 flex items-center gap-1">
+                      <Home className="h-3 w-3" /> {order.propertyName}
+                    </p>
+                    <p className="text-xs text-slate-500 flex items-center gap-1">
+                      <User className="h-3 w-3" /> {order.renterName}
+                    </p>
+                    {order.assignedVendor && (
+                      <p className="text-xs text-indigo-600 flex items-center gap-1">
+                        <UserCheck className="h-3 w-3" /> {order.assignedVendor}
+                      </p>
+                    )}
+                    {/* Move buttons */}
+                    <div className="flex gap-1 pt-1">
+                      {col.id !== 'IN_PROGRESS' && col.id !== 'RESOLVED' && (
+                        <button
+                          onClick={e => { e.stopPropagation(); moveOrder(order.id, 'IN_PROGRESS'); }}
+                          className="text-[10px] px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded-full font-semibold hover:bg-indigo-200 transition"
+                        >
+                          Start
+                        </button>
+                      )}
+                      {col.id === 'IN_PROGRESS' && (
+                        <button
+                          onClick={e => { e.stopPropagation(); moveOrder(order.id, 'DISPATCHED'); }}
+                          className="text-[10px] px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full font-semibold hover:bg-amber-200 transition"
+                        >
+                          Dispatch
+                        </button>
+                      )}
+                      {col.id === 'DISPATCHED' && (
+                        <button
+                          onClick={e => { e.stopPropagation(); moveOrder(order.id, 'RESOLVED'); }}
+                          className="text-[10px] px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full font-semibold hover:bg-emerald-200 transition"
+                        >
+                          Resolve
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Detail modal */}
+      {selectedOrder && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setSelectedOrder(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 space-y-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-start justify-between">
+              <h3 className="text-lg font-bold text-slate-900">{selectedOrder.title}</h3>
+              <button onClick={() => setSelectedOrder(null)} className="text-slate-400 hover:text-slate-900">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="space-y-2 text-sm">
+              <p className="flex items-center gap-2 text-slate-600"><MapPin className="h-4 w-4 text-slate-400" /> {selectedOrder.propertyName}</p>
+              <p className="flex items-center gap-2 text-slate-600"><User className="h-4 w-4 text-slate-400" /> {selectedOrder.renterName}</p>
+              {selectedOrder.assignedVendor && (
+                <p className="flex items-center gap-2 text-slate-600"><UserCheck className="h-4 w-4 text-slate-400" /> {selectedOrder.assignedVendor}</p>
+              )}
+              {selectedOrder.estimatedCost && (
+                <p className="flex items-center gap-2 text-slate-600"><DollarSign className="h-4 w-4 text-slate-400" /> ${selectedOrder.estimatedCost} estimated</p>
+              )}
+              <div className="bg-slate-50 rounded-xl p-3">
+                <p className="text-xs font-bold uppercase text-slate-400 mb-1">Description</p>
+                <p className="text-slate-700">{selectedOrder.description}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
