@@ -8,6 +8,8 @@ export interface AppUser {
   phone?: string;
 }
 
+export type PropertyAvailabilityStatus = 'available' | 'applied' | 'rented';
+
 export interface PropertyListing {
   id: string;
   title: string;
@@ -23,6 +25,13 @@ export interface PropertyListing {
   reviewsCount: number;
   ownerId: string;
   featured?: boolean;
+  availabilityStatus?: PropertyAvailabilityStatus;
+  officeSqm?: number;
+  meetingRooms?: number;
+  parkingSpaces?: number;
+  totalUnits?: number;
+  rentedUnits?: number;
+  remainingUnits?: number;
   lat?: number;
   lng?: number;
 }

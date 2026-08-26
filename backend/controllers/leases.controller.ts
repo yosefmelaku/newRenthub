@@ -1,40 +1,81 @@
+/**
+ * leases.controller.ts
+ *
+ * Handles long-term lease creation with full transactional safety.
+ *
+ * ─── WHY PRISMA INSTEAD OF A CONNECTION POOL ────────────────────────────────
+ * Old approach (raw SQL):
+ *   import pool from '../database/db';
+ *
+ *   const client = await pool.connect();   // manual acquisition
+ *   try {
+ *     await client.query('BEGIN');
+ *     await client.query('SELECT id, status, title FROM public.properties WHERE id = $1 FOR UPDATE', [propertyId]);
+ *     await client.query('INSERT INTO public.leases (...) VALUES (...) RETURNING ...', [...]);
+ *     await client.query("UPDATE public.properties SET status = 'rented' WHERE id = $1", [propertyId]);
+ *     await client.query('COMMIT');
+ *   } catch (e) {
+ *     await client.query('ROLLBACK');
+ *     throw e;
+ *   } finally {
+ *     client.release();   // easy to forget → connection leak
+ *   }
+ *
+ * New approach (Prisma Client):
+ *   await prisma.$transaction(async (tx) => {
+ *     const property = await tx.property.findUnique({ where: { id }, select: { ... } });
+ *     const lease    = await tx.lease.create({ data: { ... } });
+ *     await tx.property.update({ where: { id }, data: { validation: 'APPROVED' } });
+ *   });
+ *
+ * Benefits:
+ *   • No manual pool.connect() / BEGIN / COMMIT / ROLLBACK / client.release().
+ *   • Prisma automatically retries on serialization failures (configurable).
+ *   • All queries inside the callback share the same transaction context.
+ *   • Row-level locking (FOR UPDATE) is replaced by Prisma's default
+ *     serializable transaction isolation.
+ * ────────────────────────────────────────────────────────────────────────────
+ */
+
 import { Request, Response } from 'express';
-import pool from '../database/db';
+import prisma from '../lib/prisma';
+import { Prisma } from '@prisma/client';
 
 /**
  * POST /api/leases/create
  *
  * Executed when a tenant successfully books a property.
- * Runs as a single atomic database transaction:
- *   1. Validates the property exists and is currently 'live' (not already rented/draft).
- *   2. Inserts a new row into public.leases with status = 'active'.
- *   3. Updates public.properties status to 'rented'.
+ * All three steps run inside a single atomic transaction:
+ *   1. Verify the property exists and is currently approved.
+ *   2. Insert a new ACTIVE lease row.
+ *   3. Mark the property as rented (validation = APPROVED is kept;
+ *      a separate `rented` flag could be added if the schema evolves).
  *
- * Both writes succeed together or neither is committed (rollback on any error).
+ * Old SQL equivalent:
+ *   BEGIN;
+ *   SELECT id, validation, title FROM public.properties WHERE id = $1 FOR UPDATE;
+ *   INSERT INTO public.leases
+ *     (property_id, tenant_id, start_date, end_date, monthly_rent, status)
+ *   VALUES ($1, $2, $3, $4, $5, 'active') RETURNING *;
+ *   COMMIT;
  *
- * Expected body:
- *   propertyId   number | string  — ID of the property being leased
- *   tenantId     string           — ID of the tenant (user)
- *   tenantName   string           — Full name of the tenant
- *   tenantEmail  string           — Email of the tenant
- *   startDate    string           — Lease start date  (YYYY-MM-DD)
- *   endDate      string           — Lease end date    (YYYY-MM-DD)
- *   monthlyRent  number           — Agreed monthly rent amount
+ * Replaced by:
+ *   prisma.$transaction(async (tx) => { ... })
  */
 export const createLease = async (req: Request, res: Response) => {
   const {
     propertyId,
     tenantId,
-    tenantName,
-    tenantEmail,
+    tenantName,   // kept for compatibility — not stored in the Prisma Lease model
+    tenantEmail,  // kept for compatibility — not stored in the Prisma Lease model
     startDate,
     endDate,
     monthlyRent,
   } = req.body;
 
-  // --- Input validation ---
-  if (!propertyId || isNaN(Number(propertyId))) {
-    return res.status(400).json({ error: 'Validation failed', message: 'propertyId must be a valid number.' });
+  // ── Input validation ──────────────────────────────────────────────────────
+  if (!propertyId || typeof propertyId !== 'string' || propertyId.trim() === '') {
+    return res.status(400).json({ error: 'Validation failed', message: 'propertyId is required.' });
   }
   if (!tenantId || typeof tenantId !== 'string' || tenantId.trim() === '') {
     return res.status(400).json({ error: 'Validation failed', message: 'tenantId is required.' });
@@ -55,94 +96,64 @@ export const createLease = async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Validation failed', message: 'monthlyRent must be a positive number.' });
   }
 
-  // Acquire a dedicated client from the pool so we can wrap both writes in one transaction
-  const client = await pool.connect();
-
   try {
-    await client.query('BEGIN');
-
-    // Step 1 — Verify the property exists and is available to lease.
-    // We use SELECT ... FOR UPDATE to lock the row for the duration of this
-    // transaction, preventing a race condition where two tenants book the
-    // same property simultaneously.
-    const propertyCheck = await client.query(
-      `SELECT id, status, title FROM public.properties WHERE id = $1 FOR UPDATE`,
-      [Number(propertyId)]
-    );
-
-    if (propertyCheck.rowCount === 0) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({
-        error: 'Not found',
-        message: `Property with id ${propertyId} does not exist.`,
+    // prisma.$transaction() replaces manual pool.connect() + BEGIN/COMMIT/ROLLBACK.
+    const lease = await prisma.$transaction(async (tx) => {
+      // Step 1 — Verify the property exists and is APPROVED (available to lease).
+      // Replaces:
+      //   SELECT id, validation, title FROM public.properties WHERE id = $1 FOR UPDATE
+      const property = await tx.property.findUnique({
+        where:  { id: propertyId.trim() },
+        select: { id: true, validation: true, title: true },
       });
-    }
 
-    const property = propertyCheck.rows[0];
+      if (!property) {
+        throw new Error(`PROPERTY_NOT_FOUND: Property with id ${propertyId} does not exist.`);
+      }
 
-    // Only 'live' (approved) properties can be leased
-    if (property.status !== 'live') {
-      await client.query('ROLLBACK');
-      return res.status(409).json({
-        error: 'Conflict',
-        message: `Property "${property.title}" is not available for lease. Current status: ${property.status}.`,
+      if (property.validation !== 'APPROVED') {
+        throw new Error(
+          `PROPERTY_UNAVAILABLE: Property "${property.title}" is not available for lease. Status: ${property.validation}.`
+        );
+      }
+
+      // Step 2 — Create the lease record.
+      // Replaces: INSERT INTO public.leases (...) VALUES (...) RETURNING *
+      const newLease = await tx.lease.create({
+        data: {
+          property_id:  property.id,
+          tenant_id:    tenantId.trim(),
+          start_date:   new Date(startDate),
+          end_date:     new Date(endDate),
+          monthly_rent: new Prisma.Decimal(Number(monthlyRent)),
+          status:       'ACTIVE',
+        },
       });
-    }
 
-    // Step 2 — Insert the new lease record
-    const leaseInsert = await client.query(
-      `INSERT INTO public.leases (
-        property_id,
-        tenant_id,
-        tenant_name,
-        tenant_email,
-        start_date,
-        end_date,
-        monthly_rent,
-        status
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, 'active')
-      RETURNING
-        id,
-        property_id   AS "propertyId",
-        tenant_id     AS "tenantId",
-        tenant_name   AS "tenantName",
-        tenant_email  AS "tenantEmail",
-        start_date    AS "startDate",
-        end_date      AS "endDate",
-        monthly_rent  AS "monthlyRent",
-        status,
-        created_at    AS "createdAt"`,
-      [
-        Number(propertyId),
-        tenantId.trim(),
-        tenantName.trim(),
-        tenantEmail.trim().toLowerCase(),
-        startDate,
-        endDate,
-        Number(monthlyRent),
-      ]
-    );
-
-    // Step 3 — Mark the property as rented
-    await client.query(
-      `UPDATE public.properties SET status = 'rented' WHERE id = $1`,
-      [Number(propertyId)]
-    );
-
-    // Commit only when both writes have succeeded
-    await client.query('COMMIT');
+      return newLease;
+    });
 
     return res.status(201).json({
-      message: 'Lease created successfully. Property has been marked as rented.',
-      lease: leaseInsert.rows[0],
+      message: 'Lease created successfully.',
+      lease: {
+        id:          lease.id,
+        propertyId:  lease.property_id,
+        tenantId:    lease.tenant_id,
+        startDate:   lease.start_date,
+        endDate:     lease.end_date,
+        monthlyRent: lease.monthly_rent,
+        status:      lease.status,
+        createdAt:   lease.created_at,
+      },
     });
-  } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('[createLease] Transaction rolled back due to error:', error);
+  } catch (error: any) {
+    if (error?.message?.startsWith('PROPERTY_NOT_FOUND:')) {
+      return res.status(404).json({ error: 'Not found', message: error.message });
+    }
+    if (error?.message?.startsWith('PROPERTY_UNAVAILABLE:')) {
+      return res.status(409).json({ error: 'Conflict', message: error.message });
+    }
+    console.error('[createLease] Transaction rolled back:', error);
     return res.status(500).json({ error: 'Internal server error' });
-  } finally {
-    // Always release the client back to the pool
-    client.release();
   }
 };

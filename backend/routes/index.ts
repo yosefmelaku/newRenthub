@@ -1,65 +1,91 @@
 import { Router } from 'express';
-import { login } from '../controllers/auth.controller';
-import { getAllListings, createListing } from '../controllers/listings.controller';
+import { login, whoami }                                          from '../controllers/auth.controller';
+import { getAllListings, createListing }                          from '../controllers/listings.controller';
 import { createBooking, getBookingsByRenter, updateBookingStatus } from '../controllers/bookings.controller';
-import { createPayment } from '../controllers/payments.controller';
-import { getAllUsers, getUserById, createUser } from '../controllers/users.controller';
+import { createPayment }                                          from '../controllers/payments.controller';
+import { getAllUsers, getUserById, createUser, signupUser, loginUser } from '../controllers/users.controller';
 import { getAllMaintenanceRequests, createMaintenanceRequest, submitMaintenanceTicket, getTenantRentedProperties } from '../controllers/maintenance.controller';
-import { registerProperty } from '../controllers/properties.controller';
-import { createLease } from '../controllers/leases.controller';
-import { getPendingApprovals, getRentalsMatrix } from '../controllers/admin.controller';
-import { signContract } from '../controllers/esign.controller';
+import { registerProperty, getOwnerProperties }                   from '../controllers/properties.controller';
+import { createLease }                                            from '../controllers/leases.controller';
+import {
+  getDashboardStats,
+  getClassifiedUsers,
+  setUserActiveStatus,
+  getPendingApprovals,
+  setPropertyValidation,
+  getAllProperties,
+  getRentalsMatrix,
+} from '../controllers/admin.controller';
+import { loadUserFromHeader, requireSuperadmin } from '../middleware/auth.middleware';
+import { signContract }                          from '../controllers/esign.controller';
+import prisma                                    from '../lib/prisma';
 
 const router = Router();
 
-// Users
-router.get('/users', getAllUsers);
-router.get('/users/:id', getUserById);
-router.post('/users', createUser);
+// ── Auth ─────────────────────────────────────────────────────────────────────
+router.post('/auth/login',   login);
+router.get( '/auth/me',      loadUserFromHeader, whoami);
 
-// Listings
-router.get('/listings', getAllListings);
-router.post('/listings', createListing);
+// ── Users (public signup / phone login) ──────────────────────────────────────
+router.post('/users/signup', signupUser);
+router.post('/users/login',  loginUser);
+router.get( '/users',        loadUserFromHeader, requireSuperadmin, getAllUsers);
+router.get( '/users/:id',    loadUserFromHeader, getUserById);
+router.post('/users',        loadUserFromHeader, requireSuperadmin, createUser);
 
-// Bookings
-router.post('/bookings', createBooking);
-router.get('/bookings/renter/:renterId', getBookingsByRenter);
-router.patch('/bookings/:id/status', updateBookingStatus);
+// ── Listings ─────────────────────────────────────────────────────────────────
+router.get( '/listings', getAllListings);
+router.post('/listings', loadUserFromHeader, createListing);
 
-// Payments
-router.post('/payments', createPayment);
+// ── Bookings ─────────────────────────────────────────────────────────────────
+router.post(  '/bookings',                  loadUserFromHeader, createBooking);
+router.get(   '/bookings/renter/:renterId', loadUserFromHeader, getBookingsByRenter);
+router.patch( '/bookings/:id/status',       loadUserFromHeader, updateBookingStatus);
 
-// Maintenance Requests
-router.get('/maintenance', getAllMaintenanceRequests);
-router.post('/maintenance', createMaintenanceRequest);
-router.post('/maintenance/submit', submitMaintenanceTicket);
-router.patch('/maintenance/:id', async (req, res) => {
+// ── Payments ─────────────────────────────────────────────────────────────────
+router.post('/payments', loadUserFromHeader, createPayment);
 
-  const { id } = req.params;
+// ── Maintenance ───────────────────────────────────────────────────────────────
+router.get(  '/maintenance',         loadUserFromHeader, getAllMaintenanceRequests);
+router.post( '/maintenance',         loadUserFromHeader, createMaintenanceRequest);
+router.post( '/maintenance/submit',  loadUserFromHeader, submitMaintenanceTicket);
+router.patch('/maintenance/:id',     loadUserFromHeader, async (req, res) => {
+  const { id }     = req.params;
   const { status } = req.body;
   try {
-    const pool = (await import('../database/db')).default;
-    await pool.query('UPDATE maintenance_requests SET status = $1 WHERE id = $2', [status, id]);
+    await prisma.maintenanceTicket.update({ where: { id }, data: { status: status as any } });
     res.json({ message: 'Status updated' });
-  } catch (error) {
+  } catch (err) {
+    console.error('[PATCH /maintenance/:id]', err);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+router.get('/tenant/my-rented-properties', loadUserFromHeader, getTenantRentedProperties);
 
-// Properties — owner registration workflow
-router.post('/properties/register', registerProperty);
+// ── Properties ────────────────────────────────────────────────────────────────
+router.post('/properties/register',          loadUserFromHeader, registerProperty);
+router.get( '/properties/owner/:ownerId',    loadUserFromHeader, getOwnerProperties);
 
-// Leases — tenant booking / lease creation
-router.post('/leases/create', createLease);
+// ── Leases ────────────────────────────────────────────────────────────────────
+router.post('/leases/create', loadUserFromHeader, createLease);
 
-// E-Sign — tenant contract execution
-router.post('/esign/sign-contract', signContract);
+// ── E-Sign ────────────────────────────────────────────────────────────────────
+router.post('/esign/sign-contract', loadUserFromHeader, signContract);
 
-// Admin — superadmin-only endpoints
-router.get('/admin/approvals', getPendingApprovals);
-router.get('/admin/rentals-matrix', getRentalsMatrix);
+// ── Admin — SUPERADMIN only ───────────────────────────────────────────────────
+const admin = Router();
+admin.use(loadUserFromHeader, requireSuperadmin);   // all admin routes require superadmin
 
-// Auth
-router.post('/auth/login', login);
+admin.get(   '/stats',                     getDashboardStats);
+admin.get(   '/users',                     getClassifiedUsers);
+admin.patch( '/users/:id/activate',        setUserActiveStatus);
+admin.patch( '/users/:id/deactivate',      setUserActiveStatus);
+admin.get(   '/approvals',                 getPendingApprovals);
+admin.patch( '/properties/:id/approve',    setPropertyValidation);
+admin.patch( '/properties/:id/reject',     setPropertyValidation);
+admin.get(   '/properties',                getAllProperties);
+admin.get(   '/rentals-matrix',            getRentalsMatrix);
+
+router.use('/admin', admin);
 
 export default router;

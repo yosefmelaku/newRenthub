@@ -70,7 +70,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onCancel, initial
     setFlow(mode === 'signup' ? 'signup-form' : 'login-form');
   };
 
-  const handleSignupSubmit = (e: FormEvent<HTMLFormElement>) => {
+  const handleSignupSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!phone.trim() || phone.replace(/[^0-9]/g, '').length < 9) {
       setErrorMsg('Please enter a valid phone number (at least 9 digits).');
@@ -85,17 +85,40 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onCancel, initial
       return;
     }
     setErrorMsg('');
+    // Advance to name entry — API call happens on final submit
     setFlow('name-entry');
   };
 
-  const handleLoginSubmit = (e: FormEvent<HTMLFormElement>) => {
+  const handleLoginSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!phone.trim() || phone.replace(/[^0-9]/g, '').length < 9) {
       setErrorMsg('Please enter a valid phone number (at least 9 digits).');
       return;
     }
     if (!password) { setErrorMsg('Please enter your password.'); return; }
-    setFlow('name-entry');
+    setErrorMsg('');
+
+    try {
+      const res = await fetch('/api/users/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: phone.trim(), password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setErrorMsg(data.message || data.error || 'Login failed.');
+        return;
+      }
+      // data.user.role comes from DB: "tenant" | "owner" | "superadmin"
+      onLogin({
+        name:  data.user.name,
+        email: data.user.email,
+        role:  data.user.role,
+        phone: data.user.phone,
+      });
+    } catch {
+      setErrorMsg('Network error. Please try again.');
+    }
   };
 
   return (
@@ -336,9 +359,36 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin, onCancel, initial
                 <p className="text-sm text-slate-500 mt-1">Please enter your details to finish setting up your account.</p>
               </div>
 
-              <form onSubmit={(e) => { 
-                e.preventDefault(); 
-                onLogin({ name, email: email || `${phone}@phone.user`, role, address, phone }); 
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                setErrorMsg('');
+                try {
+                  const res = await fetch('/api/users/signup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, phone: phone.trim(), password, role }),
+                  });
+                  const data = await res.json();
+                  if (!res.ok) {
+                    // If account already exists, try logging in instead
+                    if (data.error === 'account_exists') {
+                      const loginRes = await fetch('/api/users/login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone: phone.trim(), password }),
+                      });
+                      const loginData = await loginRes.json();
+                      if (!loginRes.ok) { setErrorMsg(loginData.message || loginData.error || 'Login failed.'); return; }
+                      onLogin({ name: loginData.user.name, email: loginData.user.email, role: loginData.user.role, phone: loginData.user.phone });
+                      return;
+                    }
+                    setErrorMsg(data.message || data.error || 'Registration failed.');
+                    return;
+                  }
+                  onLogin({ name: data.user.name, email: data.user.email, role: data.user.role, phone: data.user.phone });
+                } catch {
+                  setErrorMsg('Network error. Please try again.');
+                }
               }} className="space-y-4">
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Full Name</label>

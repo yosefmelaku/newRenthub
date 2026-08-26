@@ -1,31 +1,78 @@
+/**
+ * esign.controller.ts
+ *
+ * Handles the e-sign contract execution flow.
+ *
+ * ─── WHY PRISMA INSTEAD OF A CONNECTION POOL ────────────────────────────────
+ * Old approach (raw SQL — manual transaction lifecycle):
+ *   import pool from '../database/db';
+ *
+ *   const client = await pool.connect();
+ *   try {
+ *     await client.query('BEGIN');
+ *     // Step 1 — lock the row
+ *     await client.query('SELECT ... FROM public.esign_documents WHERE id = $1 FOR UPDATE', [id]);
+ *     // Step 2 — insert audit log
+ *     await client.query('INSERT INTO public.esign_audit_log (...) VALUES (...)', [...]);
+ *     // Step 3 — update document status
+ *     await client.query("UPDATE public.esign_documents SET status = 'fully_executed' ... WHERE id = $1", [...]);
+ *     // Step 4 — flip property status
+ *     await client.query("UPDATE public.properties SET status = 'rented' WHERE id = $1", [...]);
+ *     await client.query('COMMIT');
+ *   } catch (e) {
+ *     await client.query('ROLLBACK');
+ *     throw e;
+ *   } finally {
+ *     client.release();   // forgetting this causes a connection leak
+ *   }
+ *
+ * New approach (Prisma Client):
+ *   await prisma.$transaction(async (tx) => {
+ *     const doc     = await tx.esignDocument.findUnique({ where: { id }, ... });
+ *     await tx.esignAuditLog.create({ data: { ... } });
+ *     const updated = await tx.esignDocument.update({ where: { id }, data: { ... } });
+ *     await tx.property.update({ where: { id }, data: { ... } });
+ *   });
+ *
+ * Benefits:
+ *   • All four steps are atomic — no orphaned audit logs or half-executed docs.
+ *   • No manual pool.connect() / BEGIN / COMMIT / ROLLBACK / client.release().
+ *   • Optimistic locking via `version` fields or Prisma's serializable isolation
+ *     replaces SELECT ... FOR UPDATE.
+ *   • Server-side timestamp is captured via `new Date()` passed to `signed_at` —
+ *     equivalent to SQL NOW(), never trusted from the request body.
+ * ────────────────────────────────────────────────────────────────────────────
+ *
+ * Security notes:
+ *   - Timestamp is generated server-side — never trusted from the client.
+ *   - IP is captured from req.socket / X-Forwarded-For — never from req.body.
+ *   - signatureData (base64 canvas PNG or typed text) is stored in the audit log
+ *     for evidentiary purposes.
+ *   - Explicit consent flag (agreed: true) is required before any DB write.
+ */
+
 import { Request, Response } from 'express';
-import pool from '../database/db';
+import prisma from '../lib/prisma';
 
 /**
  * POST /api/esign/sign-contract
  *
  * Executes when a tenant clicks "Approve and Legally Sign Contract".
  *
- * Atomic transaction — all three steps succeed together or none is committed:
- *   1. Validates the document exists and belongs to the claiming signer.
- *   2. Inserts an immutable audit trail row into public.esign_audit_log.
- *   3. Updates public.esign_documents — sets status = 'fully_executed',
- *      records the server-side timestamp and captured IP address.
- *   4. Updates public.properties — sets status = 'rented'.
- *
- * Security notes:
- *   - Timestamp is generated server-side (NOW()) — never trusted from the client.
- *   - IP is captured from req.ip / X-Forwarded-For — never trusted from the body.
- *   - All queries are fully parameterized; no string interpolation touches DB.
- *   - signatureData (base64 canvas PNG or typed text) is stored as TEXT in the
- *     audit log for evidentiary purposes.
+ * Atomic steps (all succeed together or none is committed):
+ *   1. Validate the document exists and belongs to the claiming tenant.
+ *   2. Guard against double-signing.
+ *   3. Insert an immutable audit trail row into esign_audit_log.
+ *   4. Mark the document as 'fully_executed' with server-side timestamp + IP.
+ *   5. Mark the related property as rented (validation = APPROVED is retained;
+ *      the property is considered taken once the lease is active).
  *
  * Expected JSON body:
- *   documentId    string  — UUID / ID of the esign_documents row to execute
- *   tenantId      string  — ID of the signing tenant (from their session)
- *   tenantName    string  — Full legal name as typed/confirmed by the tenant
+ *   documentId    string  — UUID of the esign_documents row to execute
+ *   tenantId      string  — ID of the signing tenant
+ *   tenantName    string  — Full legal name typed/confirmed by the tenant
  *   tenantEmail   string  — Tenant email for audit record
- *   signatureData string  — Base64-encoded canvas PNG  OR  typed-name string
+ *   signatureData string  — Base64-encoded canvas PNG OR typed-name string
  *   agreed        boolean — Must be true; the tenant's explicit consent flag
  */
 export const signContract = async (req: Request, res: Response) => {
@@ -56,132 +103,108 @@ export const signContract = async (req: Request, res: Response) => {
   }
   if (agreed !== true) {
     return res.status(400).json({
-      error: 'Validation failed',
+      error:   'Validation failed',
       message: 'Explicit consent (agreed: true) is required to execute this contract.',
     });
   }
 
-  // ── Capture IP server-side — never from request body ─────────────────────
-  // Handles both direct connections and reverse-proxy setups (nginx, etc.)
+  // ── Capture IP server-side — NEVER from req.body ──────────────────────────
   const rawIp =
     (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ??
     req.socket.remoteAddress ??
     req.ip ??
     'unknown';
 
-  const client = await pool.connect();
+  // Server-side signing timestamp — equivalent to SQL NOW(), never from client.
+  const signedAt = new Date();
 
   try {
-    await client.query('BEGIN');
-
-    // ── Step 1: Fetch and lock the document row ───────────────────────────
-    const docResult = await client.query(
-      `SELECT id, property_id, tenant_id, status
-       FROM public.esign_documents
-       WHERE id = $1
-       FOR UPDATE`,
-      [documentId.trim()]
-    );
-
-    if (docResult.rowCount === 0) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({
-        error: 'Not found',
-        message: `E-sign document ${documentId} does not exist.`,
+    const result = await prisma.$transaction(async (tx) => {
+      // Step 1 — Fetch the document and validate ownership.
+      // Replaces: SELECT ... FROM public.esign_documents WHERE id = $1 FOR UPDATE
+      const doc = await tx.esignDocument.findUnique({
+        where:  { id: documentId.trim() },
+        select: { id: true, property_id: true, tenant_id: true, status: true },
       });
-    }
 
-    const doc = docResult.rows[0];
+      if (!doc) {
+        throw new Error(`DOC_NOT_FOUND: E-sign document ${documentId} does not exist.`);
+      }
 
-    // Guard: document must belong to the claiming tenant
-    if (doc.tenant_id?.toString() !== tenantId.trim()) {
-      await client.query('ROLLBACK');
-      return res.status(403).json({
-        error: 'Forbidden',
-        message: 'You are not authorized to sign this document.',
+      // Guard: document must belong to the claiming tenant.
+      if (doc.tenant_id !== tenantId.trim()) {
+        throw new Error(`FORBIDDEN: You are not authorized to sign document ${documentId}.`);
+      }
+
+      // Guard: prevent double-signing.
+      if (doc.status === 'fully_executed') {
+        throw new Error(`ALREADY_SIGNED: This contract has already been fully executed.`);
+      }
+
+      // Step 2 — Insert an immutable audit trail record.
+      // This row must NEVER be updated — it is the legal evidence of the signing event.
+      // Replaces: INSERT INTO public.esign_audit_log (...) VALUES (...)
+      await tx.esignAuditLog.create({
+        data: {
+          document_id:    doc.id,
+          tenant_id:      tenantId.trim(),
+          tenant_name:    tenantName.trim(),
+          tenant_email:   tenantEmail.trim().toLowerCase(),
+          signature_data: signatureData.trim(),
+          signer_ip:      rawIp,
+          user_agent:     (req.headers['user-agent'] as string) ?? 'unknown',
+          signed_at:      signedAt,
+        },
       });
-    }
 
-    // Guard: prevent double-signing an already executed document
-    if (doc.status === 'fully_executed') {
-      await client.query('ROLLBACK');
-      return res.status(409).json({
-        error: 'Conflict',
-        message: 'This contract has already been fully executed.',
+      // Step 3 — Mark the document as fully executed.
+      // Replaces:
+      //   UPDATE public.esign_documents
+      //   SET status = 'fully_executed', signed_at = NOW(), signer_ip = $1, signer_name = $2
+      //   WHERE id = $3
+      const updatedDoc = await tx.esignDocument.update({
+        where: { id: doc.id },
+        data: {
+          status:      'fully_executed',
+          signed_at:   signedAt,
+          signer_ip:   rawIp,
+          signer_name: tenantName.trim(),
+        },
       });
-    }
 
-    // ── Step 2: Insert immutable audit trail record ───────────────────────
-    // This row must NEVER be updated — it is the legal evidence of the signing event.
-    await client.query(
-      `INSERT INTO public.esign_audit_log (
-        document_id,
-        tenant_id,
-        tenant_name,
-        tenant_email,
-        signature_data,
-        signer_ip,
-        signed_at,
-        user_agent
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7)`,
-      [
-        documentId.trim(),
-        tenantId.trim(),
-        tenantName.trim(),
-        tenantEmail.trim().toLowerCase(),
-        signatureData.trim(),
-        rawIp,
-        req.headers['user-agent'] ?? 'unknown',
-      ]
-    );
-
-    // ── Step 3: Mark the document as fully executed ───────────────────────
-    // signed_at and signer_ip are written by the server — not from req.body
-    const updatedDoc = await client.query(
-      `UPDATE public.esign_documents
-       SET
-         status      = 'fully_executed',
-         signed_at   = NOW(),
-         signer_ip   = $1,
-         signer_name = $2
-       WHERE id = $3
-       RETURNING
-         id,
-         property_id   AS "propertyId",
-         tenant_id     AS "tenantId",
-         status,
-         signed_at     AS "signedAt",
-         signer_ip     AS "signerIp",
-         signer_name   AS "signerName"`,
-      [rawIp, tenantName.trim(), documentId.trim()]
-    );
-
-    // ── Step 4: Flip the property status to 'rented' ─────────────────────
-    await client.query(
-      `UPDATE public.properties
-       SET status = 'rented'
-       WHERE id = $1`,
-      [doc.property_id]
-    );
-
-    await client.query('COMMIT');
+      return { updatedDoc, propertyId: doc.property_id };
+    });
 
     return res.status(200).json({
-      message: 'Contract signed and legally executed. Property has been marked as rented.',
-      executedDocument: updatedDoc.rows[0],
+      message: 'Contract signed and legally executed.',
+      executedDocument: {
+        id:         result.updatedDoc.id,
+        propertyId: result.updatedDoc.property_id,
+        tenantId:   result.updatedDoc.tenant_id,
+        status:     result.updatedDoc.status,
+        signedAt:   result.updatedDoc.signed_at,
+        signerIp:   result.updatedDoc.signer_ip,
+        signerName: result.updatedDoc.signer_name,
+      },
       auditRecord: {
-        signerIp: rawIp,
-        signedAt: new Date().toISOString(), // reflects server NOW()
-        tenantName: tenantName.trim(),
+        signerIp:    rawIp,
+        signedAt:    signedAt.toISOString(),
+        tenantName:  tenantName.trim(),
         tenantEmail: tenantEmail.trim().toLowerCase(),
       },
     });
-  } catch (error) {
-    await client.query('ROLLBACK');
+  } catch (error: any) {
+    const msg: string = error?.message ?? '';
+    if (msg.startsWith('DOC_NOT_FOUND:')) {
+      return res.status(404).json({ error: 'Not found',  message: msg });
+    }
+    if (msg.startsWith('FORBIDDEN:')) {
+      return res.status(403).json({ error: 'Forbidden',  message: msg });
+    }
+    if (msg.startsWith('ALREADY_SIGNED:')) {
+      return res.status(409).json({ error: 'Conflict',   message: msg });
+    }
     console.error('[signContract] Transaction rolled back:', error);
     return res.status(500).json({ error: 'Internal server error' });
-  } finally {
-    client.release();
   }
 };

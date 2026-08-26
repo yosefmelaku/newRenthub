@@ -4,7 +4,7 @@ import {
   FileSignature, CheckCircle2, Clock, Lock,
   BadgeCheck, Fingerprint, Download, History,
   Share2, Plus, Upload, ChevronRight, X,
-  AlertTriangle, Eraser, RotateCcw,
+  AlertTriangle, Eraser, RotateCcw, UploadCloud, FileText, Trash2,
 } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -31,7 +31,86 @@ interface ESignDocument {
   property: string;
   lastActivity: string;
   status: DocStatus;
+  pdfUrl?: string;
 }
+
+const PDF_STORAGE_KEY = 'renthub_esign_uploads';
+const MAX_PDF_BYTES = 10 * 1024 * 1024; // 10 MB
+
+// Simple helper to read a File as base64 data URL
+const fileToDataUrl = (file: File): Promise<string> => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onerror = () => reject(new Error('Failed to read file'));
+  reader.onload = () => resolve(String(reader.result));
+  reader.readAsDataURL(file);
+});
+
+// Upload zone component (drag or browse)
+const UploadZone: React.FC<{ onUpload: (name: string, dataUrl: string, size: number) => void; onClose: () => void }> = ({ onUpload, onClose }) => {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [hover, setHover] = useState(false);
+  const [error, setError] = useState('');
+
+  const acceptFile = async (file?: File) => {
+    setError('');
+    if (!file) return;
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    if (!isPdf) return setError('Only PDF files are accepted.');
+    if (file.size > MAX_PDF_BYTES) return setError('File too large (max 10 MB).');
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      onUpload(file.name, dataUrl, file.size);
+    } catch {
+      setError('Unable to read the PDF file.');
+    }
+  };
+
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setHover(false);
+    const f = e.dataTransfer.files?.[0];
+    if (f) acceptFile(f);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 space-y-4" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-bold text-zinc-900 flex items-center gap-2">
+            <UploadCloud className="h-5 w-5 text-indigo-600" /> Upload PDF for E-Sign
+          </h3>
+          <button type="button" onClick={onClose} className="p-1 rounded-lg text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div
+          onDragOver={e => { e.preventDefault(); e.stopPropagation(); setHover(true); }}
+          onDragEnter={e => { e.preventDefault(); setHover(true); }}
+          onDragLeave={() => setHover(false)}
+          onDrop={onDrop}
+          onClick={() => inputRef.current?.click()}
+          className={`border-2 rounded-2xl p-10 text-center cursor-pointer transition ${
+            hover ? 'border-indigo-500 bg-indigo-50' : 'border-dashed border-zinc-300 hover:border-indigo-300 hover:bg-zinc-50'
+          }`}
+        >
+          <UploadCloud className={`h-10 w-10 mx-auto mb-3 ${hover ? 'text-indigo-600' : 'text-zinc-300'}`} />
+          <p className="text-sm font-semibold text-zinc-700">{hover ? 'Drop the PDF to upload' : 'Drag & drop a PDF here'}</p>
+          <p className="text-xs text-zinc-400 mt-1">or click to browse your computer</p>
+          <button type="button"
+            onClick={e => { e.stopPropagation(); inputRef.current?.click(); }}
+            className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-semibold">
+            Browse files
+          </button>
+          <input ref={inputRef} type="file" accept="application/pdf,.pdf" className="hidden"
+            onChange={e => { acceptFile(e.target.files?.[0]); e.target.value = ''; }} />
+        </div>
+        {error && <p className="text-xs text-rose-600 font-semibold">{error}</p>}
+        <p className="text-[11px] text-zinc-400">PDF only · Max 10 MB</p>
+      </div>
+    </div>
+  );
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Mock data
@@ -189,7 +268,7 @@ const CanvasPad: React.FC<{ onChange: (url: string | null) => void }> = ({ onCha
 
 interface LeasePrepProps {
   config: LeaseConfig;
-  onChange: (key: keyof LeaseConfig, value: string | number) => void;
+  onChange: (key: keyof LeaseConfig, value: string) => void;
   onGenerate: () => void;
 }
 
@@ -220,37 +299,30 @@ const LeasePrepForm: React.FC<LeasePrepProps> = ({ config, onChange, onGenerate 
           <h3 className="text-base font-bold text-zinc-900">Contract Configuration</h3>
         </div>
 
-        {/* Editable fields */}
-        <div className="space-y-1.5">
-          <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider">Tenant Name <span className="text-rose-400">*</span></label>
-          <input
-            type="text"
-            value={config.tenantName}
-            onChange={e => onChange('tenantName', e.target.value)}
-            placeholder="Tenant's Full Name"
-            className="w-full border border-zinc-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition bg-white text-zinc-800"
-          />
-        </div>
+        {/* Read-only fields */}
+        {[
+          { label: 'Tenant Name',    value: config.tenantName,    key: 'tenantName'    },
+          { label: 'Property Title', value: config.propertyTitle, key: 'propertyTitle' },
+        ].map(f => (
+          <div key={f.key} className="space-y-1.5">
+            <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider">{f.label}</label>
+            <input
+              type="text"
+              value={f.value}
+              onChange={e => onChange(f.key as keyof LeaseConfig, e.target.value)}
+              className="w-full border border-zinc-200 rounded-xl px-4 py-2.5 text-sm text-zinc-800 bg-white focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition"
+            />
+          </div>
+        ))}
 
         <div className="space-y-1.5">
-          <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider">Property Title <span className="text-rose-400">*</span></label>
-          <input
-            type="text"
-            value={config.propertyTitle}
-            onChange={e => onChange('propertyTitle', e.target.value)}
-            placeholder="e.g. Sunrise Villa Block A"
-            className="w-full border border-zinc-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition bg-white text-zinc-800"
-          />
-        </div>
-
-        <div className="space-y-1.5">
-          <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider">Base Monthly Rent (USD) <span className="text-rose-400">*</span></label>
+          <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider">Base Monthly Rent (USD)</label>
           <input
             type="number"
-            value={config.monthlyRent || ''}
-            onChange={e => onChange('monthlyRent', Number(e.target.value))}
-            placeholder="e.g. 3000"
-            className="w-full border border-zinc-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition bg-white text-zinc-800"
+            min="0"
+            value={config.monthlyRent}
+            onChange={e => onChange('monthlyRent', e.target.value)}
+            className="w-full border border-zinc-200 rounded-xl px-4 py-2.5 text-sm text-zinc-800 bg-white focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition"
           />
         </div>
 
@@ -298,7 +370,7 @@ const LeasePrepForm: React.FC<LeasePrepProps> = ({ config, onChange, onGenerate 
 
         <button
           onClick={onGenerate}
-          disabled={!config.tenantName?.trim() || !config.propertyTitle?.trim() || !config.monthlyRent || !config.startDate || !config.endDate || !config.template}
+          disabled={!config.startDate || !config.endDate || !config.template}
           className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-zinc-300 disabled:cursor-not-allowed
             text-white font-bold text-sm py-3.5 rounded-xl transition shadow-sm"
         >
@@ -630,8 +702,31 @@ export const ESignPage: React.FC = () => {
     template:      '',
   });
 
-  const handleConfigChange = (key: keyof LeaseConfig, value: string | number) =>
-    setLeaseConfig(prev => ({ ...prev, [key]: value }));
+  // Upload state
+  const [showUpload, setShowUpload] = useState(false);
+  const [uploadedPdf, setUploadedPdf] = useState<{ name: string; size: number; dataUrl: string } | null>(null);
+
+  const persistPdf = (name: string, dataUrl: string, size: number) => {
+    try {
+      const existing = JSON.parse(localStorage.getItem(PDF_STORAGE_KEY) || '[]');
+      const item = { id: Date.now().toString(), name, size, dataUrl };
+      existing.unshift(item);
+      localStorage.setItem(PDF_STORAGE_KEY, JSON.stringify(existing));
+      setUploadedPdf({ name, size, dataUrl });
+      setShowUpload(false);
+      // move user to pipeline to attach/sign
+      setView('pipeline');
+      setPipelineStep('generated');
+    } catch (e) {
+      console.error('Failed to persist PDF', e);
+    }
+  };
+
+  const handleConfigChange = (key: keyof LeaseConfig, value: string) =>
+    setLeaseConfig(prev => ({
+      ...prev,
+      [key]: key === 'monthlyRent' ? Number(value) || 0 : value,
+    }));
 
   const handleGenerate = () => {
     setPipelineStep('awaiting');
@@ -658,9 +753,14 @@ export const ESignPage: React.FC = () => {
           <p className="text-zinc-500 text-sm mt-1">Manage, prepare, sign, and store legal agreements.</p>
         </div>
         <div className="flex gap-3">
-          <button className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-zinc-200 rounded-xl text-zinc-700 hover:bg-zinc-50 font-semibold text-sm transition">
-            <Upload className="h-4 w-4" /> Upload PDF
+          <button onClick={() => setShowUpload(true)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-zinc-200 rounded-xl text-zinc-700 hover:bg-zinc-50 font-semibold text-sm transition">
+            <Upload className="h-4 w-4" /> {uploadedPdf ? 'Replace PDF' : 'Upload PDF'}
           </button>
+          {showUpload && (
+            <UploadZone onUpload={persistPdf} onClose={() => setShowUpload(false)} />
+          )}
+
           <button
             onClick={() => { setView('pipeline'); setPipelineStep('generated'); }}
             className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold text-sm transition shadow-sm">
@@ -757,6 +857,21 @@ export const ESignPage: React.FC = () => {
       {view === 'pipeline' && (
         <div className="space-y-6 animate-fadeIn">
           <PipelineBar current={pipelineStep} />
+
+          {uploadedPdf && (
+            <div className="bg-white rounded-2xl border border-zinc-200 p-4 flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold text-zinc-900">Uploaded PDF ready</p>
+                <p className="text-xs text-zinc-500">{uploadedPdf.name} · {(uploadedPdf.size/1024).toFixed(1)} KB</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <a href={uploadedPdf.dataUrl} target="_blank" rel="noreferrer"
+                  className="px-3 py-2 text-sm border border-zinc-200 rounded-lg text-zinc-700 bg-white">Preview</a>
+                <button onClick={() => setPipelineStep('awaiting')}
+                  className="px-3 py-2 bg-indigo-600 text-white rounded-lg text-sm">Use this PDF for E-Sign</button>
+              </div>
+            </div>
+          )}
 
           {pipelineStep === 'generated' && (
             <LeasePrepForm config={leaseConfig} onChange={handleConfigChange} onGenerate={handleGenerate} />

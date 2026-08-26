@@ -1,0 +1,257 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Enums — mapped to string values used in the application/database
+enum UserRole {
+  TENANT      @map("tenant")
+  OWNER       @map("owner")
+  SUPERADMIN  @map("superadmin")
+}
+
+enum PropertyCategory {
+  HOUSE   @map("house")
+  VILLA   @map("villa")
+  OFFICE  @map("office")
+  STUDIO  @map("studio")
+}
+
+enum ValidationStatus {
+  PENDING  @map("pending")
+  APPROVED @map("approved")
+  REJECTED @map("rejected")
+}
+
+enum LeaseStatus {
+  PENDING   @map("pending")
+  ACTIVE    @map("active")
+  TERMINATED @map("terminated")
+  CANCELLED @map("cancelled")
+}
+
+enum SeverityLevel {
+  LOW       @map("Low")
+  MEDIUM    @map("Medium")
+  EMERGENCY @map("Emergency")
+}
+
+enum TicketStatus {
+  OPEN        @map("Open")
+  IN_PROGRESS @map("InProgress")
+  RESOLVED    @map("Resolved")
+  CLOSED      @map("Closed")
+}
+
+enum SessionStatus {
+  ACTIVE     @map("active")
+  LOGGED_OUT @map("logged_out")
+}
+
+model User {
+  id            String        @id @default(uuid()) @db.Uuid
+  full_name     String        @map("full_name")
+  email         String        @unique
+  password_hash String        @map("password_hash")
+  phone         String?       
+  is_active     Boolean       @default(true)  @map("is_active")
+  role          UserRole      @default(TENANT)
+  created_at    DateTime      @default(now()) @map("created_at")
+
+  // Relations
+  properties    Property[]    @relation("UserProperties")
+  leases        Lease[]       @relation("UserLeases")
+  tickets       MaintenanceTicket[] @relation("UserTickets")
+  sessions      UserSession[] @relation("UserSessions")
+
+  @@map("users")
+  @@index([email])
+}
+
+model Property {
+  id               String           @id @default(uuid()) @db.Uuid
+  title            String
+  description      String?
+  category         PropertyCategory
+  rent_amount      Decimal          @db.Decimal(12,2)
+  security_deposit Decimal?         @db.Decimal(12,2)
+  address          String
+  city             String
+  image_url        String?          @map("image_url")
+  validation       ValidationStatus @map("validation_status")
+
+  // Dynamic residential/commercial fields
+  bedrooms         Int?             
+  bathrooms        Int?
+  meeting_rooms    Int?
+  capacity         Int?
+
+  owner_id         String           @db.Uuid @map("owner_id")
+  owner            User             @relation("UserProperties", fields: [owner_id], references: [id], onDelete: Cascade)
+
+  leases           Lease[]          @relation("PropertyLeases")
+  tickets          MaintenanceTicket[] @relation("PropertyTickets")
+
+  created_at       DateTime         @default(now())
+
+  @@map("properties")
+  @@index([owner_id])
+}
+
+model Lease {
+  id           String     @id @default(uuid()) @db.Uuid
+  property_id  String     @db.Uuid @map("property_id")
+  property     Property   @relation("PropertyLeases", fields: [property_id], references: [id], onDelete: Cascade)
+
+  tenant_id    String     @db.Uuid @map("tenant_id")
+  tenant       User       @relation("UserLeases", fields: [tenant_id], references: [id], onDelete: Cascade)
+
+  start_date   DateTime   @map("start_date")
+  end_date     DateTime   @map("end_date")
+  monthly_rent Decimal    @db.Decimal(12,2) @map("monthly_rent")
+  status       LeaseStatus
+  created_at   DateTime   @default(now())
+
+  @@map("leases")
+  @@index([property_id])
+  @@index([tenant_id])
+}
+
+model MaintenanceTicket {
+  id           String        @id @default(uuid()) @db.Uuid
+  issue_title  String        @map("issue_title")
+  description  String
+  severity     SeverityLevel
+  status       TicketStatus  @default(OPEN)
+
+  property_id  String        @db.Uuid @map("property_id")
+  property     Property      @relation("PropertyTickets", fields: [property_id], references: [id], onDelete: Cascade)
+
+  tenant_id    String?       @db.Uuid @map("tenant_id")
+  tenant       User?         @relation("UserTickets", fields: [tenant_id], references: [id], onDelete: SetNull)
+
+  created_at   DateTime      @default(now())
+  resolved_at  DateTime?
+
+  @@map("maintenance_tickets")
+  @@index([property_id])
+  @@index([tenant_id])
+}
+
+model UserSession {
+  id         String        @id @default(cuid())
+  user_id    String        @db.Uuid @map("user_id")
+  user       User          @relation("UserSessions", fields: [user_id], references: [id], onDelete: Cascade)
+  created_at DateTime      @default(now())
+  last_active DateTime?
+  status     SessionStatus @default(ACTIVE)
+
+  @@map("user_sessions")
+  @@index([user_id])
+}
+
+// ─── Listings ─────────────────────────────────────────────────────────────────
+// Short-term/marketplace listings (separate from long-term rental properties).
+
+model Listing {
+  id            String    @id @default(uuid()) @db.Uuid
+  owner_id      String?   @db.Uuid  @map("owner_id")
+  title         String
+  description   String?
+  location      String?
+  price         Decimal?  @db.Decimal(12, 2)
+  property_type String?   @map("property_type")
+  beds          Int?
+  baths         Int?
+  image         String?
+  amenities     String[]
+  rating        Decimal?  @db.Decimal(3, 2)
+  reviews_count Int?      @default(0)   @map("reviews_count")
+  featured      Boolean   @default(false)
+  available     Boolean   @default(true)
+  created_at    DateTime  @default(now())
+  updated_at    DateTime? @updatedAt
+
+  bookings Booking[]  @relation("ListingBookings")
+
+  @@map("listings")
+}
+
+// ─── Bookings ─────────────────────────────────────────────────────────────────
+
+model Booking {
+  id             String    @id @default(uuid()) @db.Uuid
+  listing_id     String    @db.Uuid  @map("listing_id")
+  listing        Listing   @relation("ListingBookings", fields: [listing_id], references: [id], onDelete: Cascade)
+  renter_id      String?   @db.Uuid  @map("renter_id")
+  renter_name    String?   @map("renter_name")
+  start_date     DateTime  @map("start_date") @db.Date
+  end_date       DateTime  @map("end_date")   @db.Date
+  nights         Int?
+  total_price    Decimal?  @db.Decimal(12, 2) @map("total_price")
+  status         String    @default("pending")
+  payment_status String    @default("unpaid")  @map("payment_status")
+  created_at     DateTime  @default(now())
+
+  payments Payment[]  @relation("BookingPayments")
+
+  @@map("bookings")
+  @@index([listing_id])
+  @@index([renter_id])
+}
+
+// ─── Payments ─────────────────────────────────────────────────────────────────
+
+model Payment {
+  id                 String    @id @default(uuid()) @db.Uuid
+  booking_id         String    @db.Uuid  @map("booking_id")
+  booking            Booking   @relation("BookingPayments", fields: [booking_id], references: [id], onDelete: Cascade)
+  renter_id          String?   @db.Uuid  @map("renter_id")
+  amount             Decimal?  @db.Decimal(12, 2)
+  cardholder_name    String?   @map("cardholder_name")
+  card_number_masked String?   @map("card_number_masked")
+  transaction_id     String?   @unique  @map("transaction_id")
+  payment_method     String?   @map("payment_method")
+  status             String    @default("pending")
+  created_at         DateTime  @default(now())
+
+  @@map("payments")
+  @@index([booking_id])
+}
+
+// ─── E-sign ───────────────────────────────────────────────────────────────────
+
+model EsignDocument {
+  id          String    @id @default(uuid()) @db.Uuid
+  property_id String?   @db.Uuid  @map("property_id")
+  tenant_id   String?   @db.Uuid  @map("tenant_id")
+  status      String    @default("pending")
+  signer_name String?   @map("signer_name")
+  signer_ip   String?   @map("signer_ip")
+  signed_at   DateTime? @map("signed_at")
+  created_at  DateTime  @default(now())
+
+  audit_logs EsignAuditLog[] @relation("DocumentAuditLogs")
+
+  @@map("esign_documents")
+}
+
+model EsignAuditLog {
+  id             String    @id @default(uuid()) @db.Uuid
+  document_id    String    @db.Uuid  @map("document_id")
+  document       EsignDocument @relation("DocumentAuditLogs", fields: [document_id], references: [id], onDelete: Cascade)
+  tenant_id      String?   @db.Uuid  @map("tenant_id")
+  tenant_name    String?   @map("tenant_name")
+  tenant_email   String?   @map("tenant_email")
+  signature_data String?   @map("signature_data")
+  signer_ip      String?   @map("signer_ip")
+  user_agent     String?   @map("user_agent")
+  signed_at      DateTime  @default(now()) @map("signed_at")
+
+  @@map("esign_audit_log")
+  @@index([document_id])
+}

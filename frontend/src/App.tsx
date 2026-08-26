@@ -1,81 +1,120 @@
 import { useState, useEffect } from 'react';
 import type { PropertyListing, Booking, AppUser } from './types';
-import { Navbar } from './components/Navbar';
-import { BrowseRentalsPage } from './components/BrowseRentalsPage';
+import { Navbar }                from './components/Navbar';
+import { BrowseRentalsPage }    from './components/BrowseRentalsPage';
 import { PropertyDetailsModal } from './components/PropertyDetailsModal';
 import { CheckoutPaymentModal } from './components/CheckoutPaymentModal';
-import { DashboardPage as RenterDashboardPage } from './pages/tenant/DashboardPage';
-import { LoginPage } from './pages/login/LoginPage';
-import { RoleSelectionPage } from './pages/login/RoleSelectionPage';
-import { DashboardPage as OwnerDashboardPage } from './pages/owner/DashboardPage';
+import { DashboardPage as RenterDashboardPage }     from './pages/tenant/DashboardPage';
+import { LoginPage }            from './pages/login/LoginPage';
+import { RoleSelectionPage }    from './pages/login/RoleSelectionPage';
+import { DashboardPage as OwnerDashboardPage }      from './pages/owner/DashboardPage';
 import { DashboardPage as SuperAdminDashboardPage } from './pages/superadmin/DashboardPage';
-import { LandingPage } from './components/LandingPage';
-import { PricingPage } from './components/PricingPage';
-import { HowItWorksPage } from './components/HowItWorksPage';
-import { ReviewsPage } from './components/ReviewsPage';
+import { LandingPage }          from './components/LandingPage';
+import { PricingPage }          from './components/PricingPage';
+import { HowItWorksPage }       from './components/HowItWorksPage';
+import { ReviewsPage }          from './components/ReviewsPage';
+import { ShieldCheck, Heart, Lock } from 'lucide-react';
 import {
-  getAllListings,
-  getBookingsByRenter,
-  createBooking,
-  createPaymentRecord,
-  updateBookingStatus,
+  getAllListings, getBookingsByRenter,
+  createBooking, createPaymentRecord, updateBookingStatus,
 } from './lib/api';
-import { ShieldCheck, Heart } from 'lucide-react';
+import { recordRental, releaseRental } from './lib/ownerProperties';
+
+// ─── Route map ────────────────────────────────────────────────────────────────
+// Maps URL paths → internal tab names so typing /admin goes to the admin panel
+// and typing /owner goes to the owner dashboard etc.
+const PATH_MAP: Record<string, AppTab> = {
+  '/admin':      'super-admin',
+  '/superadmin': 'super-admin',
+  '/owner':      'owner-dashboard',
+  '/tenant':     'renter-dashboard',
+  '/dashboard':  'renter-dashboard',
+  '/pricing':    'pricing',
+  '/how-it-works': 'how-it-works',
+  '/reviews':    'reviews',
+};
+
+// Which roles may access which tabs
+const TAB_ROLES: Partial<Record<AppTab, string[]>> = {
+  'super-admin':     ['superadmin', 'SUPERADMIN'],
+  'owner-dashboard': ['owner',  'OWNER'],
+  'renter-dashboard':['renter', 'tenant', 'TENANT'],
+};
 
 type AppTab =
-  | 'explore'
-  | 'renter-dashboard'
-  | 'auth'
-  | 'super-admin'
-  | 'owner-dashboard'
-  | 'role-selection'
-  | 'pricing'
-  | 'how-it-works'
-  | 'reviews';
+  | 'explore' | 'renter-dashboard' | 'auth' | 'super-admin'
+  | 'owner-dashboard' | 'role-selection' | 'pricing' | 'how-it-works' | 'reviews';
+
+function resolveStartTab(user: AppUser | null): AppTab {
+  const path = window.location.pathname.toLowerCase();
+  const mapped = PATH_MAP[path];
+  if (!mapped) {
+    const saved = localStorage.getItem('currentTab') as AppTab | null;
+    return saved ?? 'explore';
+  }
+  return mapped; // role enforcement happens in render
+}
+
+// ── 403 screen shown when a user navigates to a tab they don't have access to
+function AccessDenied({ onGoHome }: { onGoHome: () => void }) {
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 text-white gap-6 p-8">
+      <div className="bg-rose-500/10 border border-rose-500/20 p-5 rounded-full">
+        <Lock className="h-12 w-12 text-rose-400" />
+      </div>
+      <h1 className="text-3xl font-extrabold">Access Denied</h1>
+      <p className="text-slate-400 text-center max-w-sm">
+        You don't have permission to view this page.
+        Please log in with an account that has the required role.
+      </p>
+      <button
+        onClick={onGoHome}
+        className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 rounded-2xl font-bold transition"
+      >
+        Back to Home
+      </button>
+    </div>
+  );
+}
 
 export default function App() {
-  // ── Persisted tab ────────────────────────────────────────────────────────
-  const [currentTab, setCurrentTab] = useState<AppTab>(() => {
-    const saved = localStorage.getItem('currentTab');
-    return saved ? (saved as AppTab) : 'explore';
-  });
-
-  // ── Persisted user ───────────────────────────────────────────────────────
+  // Persisted user — read first so resolveStartTab can use it
   const [currentUser, setCurrentUser] = useState<AppUser | null>(() => {
-    try {
-      const saved = localStorage.getItem('currentUser');
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
+    try { return JSON.parse(localStorage.getItem('currentUser') || 'null'); }
+    catch { return null; }
   });
 
+  const [currentTab,   setCurrentTab]   = useState<AppTab>(() => resolveStartTab(currentUser));
   const [authMode,     setAuthMode]     = useState<'login' | 'signup'>('signup');
   const [selectedRole, setSelectedRole] = useState<'renter' | 'owner' | 'super-admin' | null>(null);
 
-  // ── Persist user to localStorage whenever it changes ────────────────────
+  // Sync URL bar ↔ tab
   useEffect(() => {
-    if (currentUser) {
-      localStorage.setItem('currentUser', JSON.stringify(currentUser));
-    } else {
-      localStorage.removeItem('currentUser');
-      localStorage.removeItem('currentTab');
-    }
-  }, [currentUser]);
-
-  // ── Persist tab ──────────────────────────────────────────────────────────
-  useEffect(() => {
+    const map: Partial<Record<AppTab, string>> = {
+      'super-admin':      '/admin',
+      'owner-dashboard':  '/owner',
+      'renter-dashboard': '/tenant',
+      'pricing':          '/pricing',
+      'how-it-works':     '/how-it-works',
+      'reviews':          '/reviews',
+      'explore':          '/',
+    };
+    const p = map[currentTab];
+    if (p && window.location.pathname !== p) window.history.replaceState({}, '', p);
     localStorage.setItem('currentTab', currentTab);
   }, [currentTab]);
 
-  // ── On first login only: redirect to the right default home ─────────────
-  // We track whether this is the first login using a flag so that
-  // returning from explore/browse doesn't keep bouncing you back.
+  useEffect(() => {
+    if (currentUser) localStorage.setItem('currentUser', JSON.stringify(currentUser));
+    else { localStorage.removeItem('currentUser'); localStorage.removeItem('currentTab'); }
+  }, [currentUser]);
+
   const handleAuthSuccess = (user: AppUser) => {
     setCurrentUser(user);
-    if (user.role === 'owner')       setCurrentTab('owner-dashboard');
-    else if (user.role === 'super-admin') setCurrentTab('super-admin');
-    else                             setCurrentTab('renter-dashboard');
+    const role = String(user.role).toLowerCase();
+    if (role === 'owner')      setCurrentTab('owner-dashboard');
+    else if (role === 'superadmin' || role === 'super-admin') setCurrentTab('super-admin');
+    else                       setCurrentTab('renter-dashboard');
   };
 
   const handleTabChange = (next: AppTab) => setCurrentTab(next);
@@ -85,91 +124,99 @@ export default function App() {
     localStorage.removeItem('currentTab');
     setCurrentUser(null);
     setCurrentTab('explore');
+    window.history.replaceState({}, '', '/');
   };
+
+  // ── Role guard ───────────────────────────────────────────────────────────
+  // If a logged-in user navigates to a tab they don't have access to, show 403
+  if (currentUser) {
+    const allowed = TAB_ROLES[currentTab];
+    if (allowed) {
+      const userRole = String(currentUser.role).toLowerCase();
+      if (!allowed.map(r => r.toLowerCase()).includes(userRole)) {
+        return <AccessDenied onGoHome={() => { setCurrentTab('explore'); window.history.replaceState({}, '', '/'); }} />;
+      }
+    }
+  }
 
   // ── Data ─────────────────────────────────────────────────────────────────
   const [globalSearchTerm, setGlobalSearchTerm] = useState('');
   const [listings,         setListings]         = useState<PropertyListing[]>([]);
-  const [bookings,         setBookings]          = useState<Booking[]>([]);
-  const [loadingListings,  setLoadingListings]   = useState(true);
-  const [loadingBookings,  setLoadingBookings]   = useState(false);
+  const [bookings,         setBookings]         = useState<Booking[]>([]);
+  const [loadingListings,  setLoadingListings]  = useState(true);
+  const [loadingBookings,  setLoadingBookings]  = useState(false);
   const [selectedProperty, setSelectedProperty] = useState<PropertyListing | null>(null);
   const [checkoutDetails,  setCheckoutDetails]  = useState<{
-    property: PropertyListing;
-    startDate: string; endDate: string; nights: number; totalPrice: number;
+    property: PropertyListing; startDate: string; endDate: string; nights: number; totalPrice: number;
   } | null>(null);
 
-  const fetchListings = async () => {
+  useEffect(() => {
     setLoadingListings(true);
-    try { setListings(await getAllListings()); }
-    catch (e) { console.error('Failed to fetch listings', e); }
-    finally   { setLoadingListings(false); }
-  };
+    getAllListings()
+      .then(setListings)
+      .catch(e => console.error('Failed to fetch listings', e))
+      .finally(() => setLoadingListings(false));
+  }, []);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    setLoadingBookings(true);
+    getBookingsByRenter(currentUser.email!)
+      .then(setBookings)
+      .catch(e => console.error('Failed to fetch bookings', e))
+      .finally(() => setLoadingBookings(false));
+  }, [currentUser, currentTab]);
 
   const fetchBookings = async () => {
     if (!currentUser) return;
     setLoadingBookings(true);
     try { setBookings(await getBookingsByRenter(currentUser.email!)); }
-    catch (e) { console.error('Failed to fetch bookings', e); }
-    finally   { setLoadingBookings(false); }
+    catch (e) { console.error(e); }
+    finally { setLoadingBookings(false); }
   };
-
-  useEffect(() => { fetchListings(); }, []);
-  useEffect(() => { if (currentUser) fetchBookings(); }, [currentUser, currentTab]);
 
   // ── Booking flow ─────────────────────────────────────────────────────────
-  const handleInitiateBooking = (schedule: {
-    startDate: string; endDate: string; nights: number; totalPrice: number;
-  }) => {
+  const handleInitiateBooking = (s: { startDate: string; endDate: string; nights: number; totalPrice: number }) => {
     if (!selectedProperty) return;
-    // If somehow not logged in, create a demo session so the checkout works
-    if (!currentUser) {
-      setCurrentUser({ name: 'Demo Tenant', email: 'demo@phone.user', role: 'renter' });
-    }
+    if (!currentUser) setCurrentUser({ name: 'Demo Tenant', email: 'demo@phone.user', role: 'renter' });
     const prop = selectedProperty;
     setSelectedProperty(null);
-    setCheckoutDetails({ property: prop, ...schedule });
+    setCheckoutDetails({ property: prop, ...s });
   };
 
-  const handlePaymentSuccess = async (details: {
-    cardholderName: string; cardNumberMasked: string;
-  }) => {
+  const handlePaymentSuccess = async (details: { cardholderName: string; cardNumberMasked: string }) => {
     if (!checkoutDetails || !currentUser) return;
+    const listing = checkoutDetails.property;
     try {
       const booking = await createBooking({
-        listingId:       checkoutDetails.property.id,
-        listingTitle:    checkoutDetails.property.title,
-        listingImage:    checkoutDetails.property.image,
-        listingLocation: checkoutDetails.property.location,
-        renterId:        currentUser.email!,
-        renterName:      currentUser.name,
-        startDate:       checkoutDetails.startDate,
-        endDate:         checkoutDetails.endDate,
-        totalPrice:      checkoutDetails.totalPrice,
-        nights:          checkoutDetails.nights,
+        listingId: listing.id, listingTitle: listing.title, listingImage: listing.image,
+        listingLocation: listing.location, renterId: currentUser.email!,
+        renterName: currentUser.name, startDate: checkoutDetails.startDate,
+        endDate: checkoutDetails.endDate, totalPrice: checkoutDetails.totalPrice,
+        nights: checkoutDetails.nights,
       });
       await createPaymentRecord({
-        bookingId:        booking.id,
-        renterId:         currentUser.email!,
-        amount:           checkoutDetails.totalPrice,
-        cardholderName:   details.cardholderName,
+        bookingId: booking.id, renterId: currentUser.email!,
+        amount: checkoutDetails.totalPrice, cardholderName: details.cardholderName,
         cardNumberMasked: details.cardNumberMasked,
       });
-      setCheckoutDetails(null);
-      await fetchBookings();
-      setCurrentTab('renter-dashboard');
-    } catch (e) {
-      console.error('Checkout failed', e);
-      alert('Payment error — please try again.');
-    }
+    } catch (e) { console.error('Checkout API failed', e); }
+    recordRental(listing.id, listing.totalUnits || listing.beds || 1);
+    setCheckoutDetails(null);
+    await fetchBookings();
+    setCurrentTab('renter-dashboard');
   };
 
   const handleCancelBooking = async (id: string) => {
-    try { await updateBookingStatus(id, 'cancelled'); await fetchBookings(); }
-    catch (e) { console.error('Cancel failed', e); }
+    try {
+      const booking = bookings.find(b => b.id === id);
+      await updateBookingStatus(id, 'cancelled');
+      if (booking?.listingId) releaseRental(booking.listingId);
+      await fetchBookings();
+    } catch (e) { console.error('Cancel failed', e); }
   };
 
-  // ── Unauthenticated routes ───────────────────────────────────────────────
+  // ── Unauthenticated routes ────────────────────────────────────────────────
   if (!currentUser) {
     if (currentTab === 'role-selection') {
       return (
@@ -189,6 +236,12 @@ export default function App() {
         />
       );
     }
+    // Someone typed /admin or /owner while not logged in → redirect to login
+    if (currentTab === 'super-admin' || currentTab === 'owner-dashboard' || currentTab === 'renter-dashboard') {
+      return (
+        <AccessDenied onGoHome={() => { setCurrentTab('role-selection'); window.history.replaceState({}, '', '/'); }} />
+      );
+    }
     return (
       <LandingPage
         onAuthSuccess={handleAuthSuccess}
@@ -202,25 +255,14 @@ export default function App() {
     );
   }
 
-  // ── Authenticated shell ──────────────────────────────────────────────────
-  // Owner & super-admin dashboards are fully self-contained (own sidebar +
-  // header). They are rendered without the global Navbar to avoid doubling up.
-  // Renter dashboard now renders INSIDE the global shell so the Navbar is
-  // always visible — this is what lets a renter freely browse properties,
-  // then click "My Dashboard" to come back.
+  // ── Authenticated shell ───────────────────────────────────────────────────
   const hideNavbar = currentTab === 'owner-dashboard' || currentTab === 'super-admin';
 
   return (
     <div className="min-h-screen bg-slate-50/50 flex flex-col" id="app-root-layout">
-
-      {/* ── Global Navbar — visible for all renter pages ── */}
       {!hideNavbar && (
         <Navbar
-          currentTab={
-            ['auth', 'role-selection', 'pricing', 'how-it-works', 'reviews'].includes(currentTab)
-              ? 'explore'
-              : (currentTab as 'explore' | 'renter-dashboard' | 'super-admin' | 'owner-dashboard')
-          }
+          currentTab={(['auth','role-selection','pricing','how-it-works','reviews'].includes(currentTab) ? 'explore' : currentTab) as any}
           setCurrentTab={handleTabChange}
           currentUser={currentUser}
           globalSearchTerm={globalSearchTerm}
@@ -230,110 +272,74 @@ export default function App() {
         />
       )}
 
-      {/* ── Owner dashboard — fully self-contained, full viewport ── */}
       {currentTab === 'owner-dashboard' && (
         <div className="flex-1 animate-fadeIn">
-          <OwnerDashboardPage
-            user={currentUser}
-            onLogout={handleLogout}
-            onUpdateUser={setCurrentUser}
-          />
+          <OwnerDashboardPage user={currentUser} onLogout={handleLogout} onUpdateUser={setCurrentUser} />
         </div>
       )}
 
-      {/* ── Super admin — fully self-contained ── */}
       {currentTab === 'super-admin' && (
         <div className="flex-1 animate-fadeIn">
-          <SuperAdminDashboardPage
-            userName={currentUser?.name ?? 'Admin'}
-            onLogout={handleLogout}
-          />
+          <SuperAdminDashboardPage userName={currentUser?.name ?? 'Admin'} onLogout={handleLogout} />
         </div>
       )}
 
-      {/* ── All renter + public pages — rendered under the shared Navbar ── */}
       {!hideNavbar && (
         <main className="flex-1">
-
-          {/* Browse / Explore — accessible to logged-in renters too */}
           {currentTab === 'explore' && (
             <div className="animate-fadeIn">
               {loadingListings ? (
                 <div className="py-24 text-center">
                   <div className="h-10 w-10 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-                  <p className="text-gray-500 text-sm font-semibold">Loading available properties…</p>
+                  <p className="text-gray-500 text-sm font-semibold">Loading properties…</p>
                 </div>
               ) : (
                 <BrowseRentalsPage
-                  listings={listings}
-                  searchTerm={globalSearchTerm}
+                  listings={listings} searchTerm={globalSearchTerm}
                   onSearchTermChange={setGlobalSearchTerm}
                   onSelectProperty={(p) => setSelectedProperty(p)}
                 />
               )}
             </div>
           )}
-
-          {/* Renter dashboard — lives inside the shared Navbar shell */}
           {currentTab === 'renter-dashboard' && (
             <div className="animate-fadeIn">
               <RenterDashboardPage
-                user={currentUser}
-                bookings={bookings}
-                listings={listings}
-                onCancelBooking={handleCancelBooking}
-                loading={loadingBookings}
-                onRefresh={fetchBookings}
-                onBrowseMore={() => setCurrentTab('explore')}
-                onLogout={handleLogout}
-                onUpdateUser={setCurrentUser}
+                user={currentUser} bookings={bookings} listings={listings}
+                onCancelBooking={handleCancelBooking} loading={loadingBookings}
+                onRefresh={fetchBookings} onBrowseMore={() => setCurrentTab('explore')}
+                onLogout={handleLogout} onUpdateUser={setCurrentUser}
               />
             </div>
           )}
-
-          {currentTab === 'pricing'      && <div className="animate-fadeIn max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8"><PricingPage /></div>}
-          {currentTab === 'how-it-works' && <div className="animate-fadeIn max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8"><HowItWorksPage /></div>}
-          {currentTab === 'reviews'      && <div className="animate-fadeIn max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8"><ReviewsPage /></div>}
+          {currentTab === 'pricing'      && <div className="animate-fadeIn max-w-7xl mx-auto px-4 py-8"><PricingPage /></div>}
+          {currentTab === 'how-it-works' && <div className="animate-fadeIn max-w-7xl mx-auto px-4 py-8"><HowItWorksPage /></div>}
+          {currentTab === 'reviews'      && <div className="animate-fadeIn max-w-7xl mx-auto px-4 py-8"><ReviewsPage /></div>}
         </main>
       )}
 
-      {/* ── Footer — only on non-dashboard pages ── */}
       {!hideNavbar && currentTab !== 'renter-dashboard' && (
         <footer className="bg-white border-t border-gray-100 py-6 mt-auto">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+          <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
             <div className="flex items-center space-x-2">
               <span className="text-sm font-extrabold text-gray-900">RentHub</span>
-              <span className="text-xs text-gray-400">&bull; Cloud Managed Rental Suite</span>
+              <span className="text-xs text-gray-400">• Cloud Managed Rental Suite</span>
             </div>
             <div className="flex items-center space-x-4 text-xs text-gray-500">
-              <span className="flex items-center gap-1">
-                <ShieldCheck className="h-4 w-4 text-emerald-600" /> PCI-DSS Compliant
-              </span>
-              <span className="flex items-center gap-1">
-                Made with <Heart className="h-3.5 w-3.5 text-rose-500 fill-rose-500 mx-0.5" /> for real estate
-              </span>
+              <span className="flex items-center gap-1"><ShieldCheck className="h-4 w-4 text-emerald-600" /> PCI-DSS Compliant</span>
+              <span className="flex items-center gap-1">Made with <Heart className="h-3.5 w-3.5 text-rose-500 fill-rose-500 mx-0.5" /> for real estate</span>
             </div>
           </div>
         </footer>
       )}
 
-      {/* ── Modals ── */}
       {selectedProperty && (
-        <PropertyDetailsModal
-          property={selectedProperty}
-          onClose={() => setSelectedProperty(null)}
-          onInitiateBooking={handleInitiateBooking}
-        />
+        <PropertyDetailsModal property={selectedProperty} onClose={() => setSelectedProperty(null)} onInitiateBooking={handleInitiateBooking} />
       )}
       {checkoutDetails && (
         <CheckoutPaymentModal
           property={checkoutDetails.property}
-          bookingDetails={{
-            startDate:  checkoutDetails.startDate,
-            endDate:    checkoutDetails.endDate,
-            nights:     checkoutDetails.nights,
-            totalPrice: checkoutDetails.totalPrice,
-          }}
+          bookingDetails={{ startDate: checkoutDetails.startDate, endDate: checkoutDetails.endDate, nights: checkoutDetails.nights, totalPrice: checkoutDetails.totalPrice }}
           onClose={() => setCheckoutDetails(null)}
           onPaymentSuccess={handlePaymentSuccess}
         />

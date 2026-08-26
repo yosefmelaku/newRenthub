@@ -57,6 +57,9 @@ export const PropertyDetailsModal: React.FC<PropertyDetailsModalProps> = ({
 
   if (!property) return null;
 
+  const availability = property.availabilityStatus ?? 'available';
+  const canBook = availability === 'available';
+
   // Price Calculation Breakdown
   const baseTotal = property.price * nights;
   const cleaningFee = nights > 0 ? 75 : 0;
@@ -125,27 +128,46 @@ export const PropertyDetailsModal: React.FC<PropertyDetailsModalProps> = ({
           </div>
 
           {/* Key specs */}
-          <div className="grid grid-cols-3 gap-3 border-y border-gray-100 py-4 text-center">
-            <div className="bg-gray-50 p-3 rounded-xl border border-gray-100/50">
-              <span className="text-[10px] text-gray-400 uppercase tracking-wider font-sans font-bold block">Beds</span>
-              <span className="font-sans font-extrabold text-gray-900 text-lg flex items-center justify-center gap-1.5 mt-0.5">
-                <Bed className="h-4 w-4 text-emerald-600" />
-                {property.beds}
-              </span>
-            </div>
-            <div className="bg-gray-50 p-3 rounded-xl border border-gray-100/50">
-              <span className="text-[10px] text-gray-400 uppercase tracking-wider font-sans font-bold block">Bathrooms</span>
-              <span className="font-sans font-extrabold text-gray-900 text-lg flex items-center justify-center gap-1.5 mt-0.5">
-                <Bath className="h-4 w-4 text-emerald-600" />
-                {property.baths}
-              </span>
-            </div>
-            <div className="bg-gray-50 p-3 rounded-xl border border-gray-100/50">
-              <span className="text-[10px] text-gray-400 uppercase tracking-wider font-sans font-bold block">Type</span>
-              <span className="font-sans font-bold text-gray-900 text-sm block mt-1.5 truncate capitalize">
-                {property.type}
-              </span>
-            </div>
+          <div className={`grid gap-3 border-y border-gray-100 py-4 text-center ${property.type === 'office' ? 'grid-cols-3' : 'grid-cols-3'}`}>
+            {property.type === 'office' ? (
+              <>
+                <div className="bg-gray-50 p-3 rounded-xl border border-gray-100/50">
+                  <span className="text-[10px] text-gray-400 uppercase tracking-wider font-sans font-bold block">Size</span>
+                  <span className="font-sans font-extrabold text-gray-900 text-lg mt-0.5">{property.officeSqm ?? '—'} sqm</span>
+                </div>
+                <div className="bg-gray-50 p-3 rounded-xl border border-gray-100/50">
+                  <span className="text-[10px] text-gray-400 uppercase tracking-wider font-sans font-bold block">Meeting Rooms</span>
+                  <span className="font-sans font-extrabold text-gray-900 text-lg mt-0.5">{property.meetingRooms ?? 0}</span>
+                </div>
+                <div className="bg-gray-50 p-3 rounded-xl border border-gray-100/50">
+                  <span className="text-[10px] text-gray-400 uppercase tracking-wider font-sans font-bold block">Parking</span>
+                  <span className="font-sans font-extrabold text-gray-900 text-lg mt-0.5">{property.parkingSpaces ?? 0}</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="bg-gray-50 p-3 rounded-xl border border-gray-100/50">
+                  <span className="text-[10px] text-gray-400 uppercase tracking-wider font-sans font-bold block">Beds</span>
+                  <span className="font-sans font-extrabold text-gray-900 text-lg flex items-center justify-center gap-1.5 mt-0.5">
+                    <Bed className="h-4 w-4 text-emerald-600" />
+                    {property.beds}
+                  </span>
+                </div>
+                <div className="bg-gray-50 p-3 rounded-xl border border-gray-100/50">
+                  <span className="text-[10px] text-gray-400 uppercase tracking-wider font-sans font-bold block">Bathrooms</span>
+                  <span className="font-sans font-extrabold text-gray-900 text-lg flex items-center justify-center gap-1.5 mt-0.5">
+                    <Bath className="h-4 w-4 text-emerald-600" />
+                    {property.baths}
+                  </span>
+                </div>
+                <div className="bg-gray-50 p-3 rounded-xl border border-gray-100/50">
+                  <span className="text-[10px] text-gray-400 uppercase tracking-wider font-sans font-bold block">Type</span>
+                  <span className="font-sans font-bold text-gray-900 text-sm block mt-1.5 truncate capitalize">
+                    {property.type}
+                  </span>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Description */}
@@ -276,14 +298,24 @@ export const PropertyDetailsModal: React.FC<PropertyDetailsModalProps> = ({
 
           {/* Secure Book button & badges */}
           <div className="pt-6 border-t border-gray-200/60 mt-6 space-y-3">
+            {!canBook && (
+              <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-100 p-3 rounded-xl">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span>
+                  {availability === 'applied'
+                    ? 'This property already has a pending application.'
+                    : 'This property is no longer available for booking.'}
+                </span>
+              </div>
+            )}
             <button
               id="initiate-booking-btn"
               onClick={handleBookClick}
-              disabled={nights <= 0}
+              disabled={nights <= 0 || !canBook}
               className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-sans font-bold py-3.5 px-4 rounded-xl shadow-md cursor-pointer transition-colors text-center text-sm flex items-center justify-center space-x-2"
             >
               <Sparkles className="h-4 w-4" />
-              <span>Book with Instant Pay</span>
+              <span>{canBook ? 'Book with Instant Pay' : 'Not Available'}</span>
             </button>
 
             <div className="flex items-center justify-center gap-1.5 text-[10px] text-gray-500 font-mono">

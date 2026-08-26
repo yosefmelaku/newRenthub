@@ -1,93 +1,185 @@
+/**
+ * users.controller.ts
+ *
+ * Handles user registration (signup), phone-based login, and basic CRUD.
+ *
+ * ─── WHY PRISMA INSTEAD OF A CONNECTION POOL ────────────────────────────────
+ * Old approach (raw SQL):
+ *   import pool from '../database/db';
+ *
+ *   // Register
+ *   await pool.query(
+ *     'INSERT INTO public.users (full_name, email, password_hash, role) VALUES ($1, $2, $3, $4)',
+ *     [fullName, email, passwordHash, role]
+ *   );
+ *
+ *   // Login
+ *   const result = await pool.query(
+ *     'SELECT * FROM public.users WHERE email = $1',
+ *     [email]
+ *   );
+ *   const user = result.rows[0];
+ *
+ * New approach (Prisma Client):
+ *   import prisma from '../lib/prisma';
+ *
+ *   // Register
+ *   const user = await prisma.user.create({ data: { full_name, email, password_hash, role } });
+ *
+ *   // Login
+ *   const user = await prisma.user.findUnique({ where: { email } });
+ *
+ * Benefits:
+ *   • No manual $1, $2 parameter indexing — Prisma builds the query safely.
+ *   • `select` on create limits what columns are sent back, no post-processing needed.
+ *   • Duplicate-key violations surface as PrismaClientKnownRequestError (code P2002),
+ *     which can be caught specifically rather than inspecting raw pg error codes.
+ *   • bcrypt hashing is applied before prisma.user.create(), keeping concerns separated.
+ * ────────────────────────────────────────────────────────────────────────────
+ */
+
 import { Request, Response } from 'express';
-import pool from '../database/db';
+import prisma from '../lib/prisma';
 import bcrypt from 'bcrypt';
 
+/** bcrypt work factor — 12 rounds is a strong default for 2024+ hardware. */
 const SALT_ROUNDS = 12;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/users
+// Returns all users (superadmin general listing — no role filter here).
+// ─────────────────────────────────────────────────────────────────────────────
 
 export const getAllUsers = async (req: Request, res: Response) => {
   try {
-    const result = await pool.query(
-      'SELECT id, name, email, phone, address, role, created_at FROM users ORDER BY id ASC'
-    );
-    res.json(result.rows);
+    // prisma.user.findMany() replaces:
+    //   SELECT id, full_name, email, phone, role, created_at
+    //   FROM public.users ORDER BY id ASC
+    const users = await prisma.user.findMany({
+      select: {
+        id:         true,
+        full_name:  true,
+        email:      true,
+        phone:      true,
+        role:       true,
+        created_at: true,
+      },
+      orderBy: { id: 'asc' },
+    });
+    res.json(users);
   } catch (error) {
     console.error('Error fetching users:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/users/:id
+// ─────────────────────────────────────────────────────────────────────────────
+
 export const getUserById = async (req: Request, res: Response) => {
   const { id } = req.params;
   try {
-    const result = await pool.query(
-      'SELECT id, name, email, phone, address, role FROM users WHERE id = $1',
-      [id]
-    );
-    if (result.rows.length === 0) {
+    // prisma.user.findUnique() replaces:
+    //   SELECT id, full_name, email, phone, role FROM public.users WHERE id = $1
+    const user = await prisma.user.findUnique({
+      where: { id },
+      select: {
+        id:        true,
+        full_name: true,
+        email:     true,
+        phone:     true,
+        role:      true,
+      },
+    });
+    if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
-    res.json(result.rows[0]);
+    res.json(user);
   } catch (error) {
     console.error('Error fetching user:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 };
 
-/**
- * POST /api/users/signup
- * Registers a new user. Enforces uniqueness on phone number.
- * Hashes the password with bcrypt before storing.
- */
-export const signupUser = async (req: Request, res: Response) => {
-  const { name, phone, password, role, address } = req.body;
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/auth/signup
+//
+// Registers a new renter or owner via phone number.
+// A synthetic email (phone@phone.user) is derived so the unique email
+// constraint in the users table is honoured without requiring a real address.
+//
+// Old SQL equivalent:
+//   -- duplicate check
+//   SELECT id FROM public.users WHERE email = $1
+//   -- insert
+//   INSERT INTO public.users (full_name, email, password_hash, role)
+//   VALUES ($1, $2, $3, $4)
+//   RETURNING full_name, email, phone, role
+//
+// Replaced by:
+//   prisma.user.findFirst({ where: { email: derivedEmail } })
+//   prisma.user.create({ data: { ... }, select: { ... } })
+// ─────────────────────────────────────────────────────────────────────────────
 
-  if (!name?.trim())     return res.status(400).json({ error: 'name is required.' });
-  if (!phone?.trim())    return res.status(400).json({ error: 'phone is required.' });
-  if (!password)         return res.status(400).json({ error: 'password is required.' });
-  if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' });
+export const signupUser = async (req: Request, res: Response) => {
+  const { name, phone, password, role } = req.body;
+
+  if (!name?.trim())        return res.status(400).json({ error: 'name is required.' });
+  if (!phone?.trim())       return res.status(400).json({ error: 'phone is required.' });
+  if (!password)            return res.status(400).json({ error: 'password is required.' });
+  if (password.length < 8)  return res.status(400).json({ error: 'Password must be at least 8 characters.' });
 
   const allowedRoles = ['renter', 'owner'];
-  const userRole = allowedRoles.includes(role) ? role : 'renter';
+  const userRole     = allowedRoles.includes(role) ? role : 'renter';
 
   try {
-    // Enforce unique phone number
-    const existing = await pool.query(
-      'SELECT id FROM users WHERE phone = $1',
-      [phone.trim()]
-    );
-    if ((existing.rowCount ?? 0) > 0) {
+    // Derive a stable, unique email from the phone number.
+    const derivedEmail = `${phone.trim().replace(/[^0-9]/g, '')}@phone.user`;
+
+    // Check for an existing account — replaces:
+    //   SELECT id FROM public.users WHERE email = $1
+    const existing = await prisma.user.findFirst({
+      where: { email: derivedEmail },
+    });
+    if (existing) {
       return res.status(409).json({
-        error: 'account_exists',
+        error:   'account_exists',
         message: 'An account with this phone number already exists. Please sign in instead.',
       });
     }
 
+    // Hash the password before storing — never store plain text.
     const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
-    const result = await pool.query(
-      `INSERT INTO users (name, phone, password_hash, role, address, email)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, name, phone, role, address, email`,
-      [
-        name.trim(),
-        phone.trim(),
-        passwordHash,
-        userRole,
-        address?.trim() ?? '',
-        // derive a placeholder email if none provided
-        `${phone.trim().replace(/[^0-9]/g, '')}@phone.user`,
-      ]
-    );
+    // prisma.user.create() replaces:
+    //   INSERT INTO public.users (full_name, email, password_hash, role)
+    //   VALUES ($1, $2, $3, $4) RETURNING full_name, email, phone, role
+    //
+    // `select` on create means Prisma only returns the columns listed here,
+    // equivalent to a RETURNING clause with explicit column names.
+    const user = await prisma.user.create({
+      data: {
+        full_name:     name.trim(),
+        email:         derivedEmail,
+        password_hash: passwordHash,
+        role:          userRole === 'owner' ? 'OWNER' : 'TENANT',
+      },
+      select: {
+        full_name: true,
+        email:     true,
+        phone:     true,
+        role:      true,
+      },
+    });
 
-    const user = result.rows[0];
     return res.status(201).json({
       message: 'Account created successfully.',
       user: {
-        name: user.name,
+        name:  user.full_name,
         email: user.email,
         phone: user.phone,
-        role: user.role,
-        address: user.address,
+        role:  user.role,
       },
     });
   } catch (error) {
@@ -96,50 +188,67 @@ export const signupUser = async (req: Request, res: Response) => {
   }
 };
 
-/**
- * POST /api/users/login
- * Authenticates an existing user by phone + password.
- * Returns 404 if the account does not exist (forces signup).
- * Returns 401 if the password is wrong.
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/auth/login  (phone-based, for renters and owners)
+//
+// Looks up the user by derived email, then verifies the bcrypt hash.
+//
+// Old SQL equivalent:
+//   SELECT * FROM public.users WHERE email = $1
+//
+// Replaced by:
+//   prisma.user.findUnique({ where: { email: derivedEmail }, select: { ... } })
+// ─────────────────────────────────────────────────────────────────────────────
+
 export const loginUser = async (req: Request, res: Response) => {
   const { phone, password } = req.body;
 
-  if (!phone?.trim())  return res.status(400).json({ error: 'phone is required.' });
-  if (!password)       return res.status(400).json({ error: 'password is required.' });
+  if (!phone?.trim()) return res.status(400).json({ error: 'phone is required.' });
+  if (!password)      return res.status(400).json({ error: 'password is required.' });
 
   try {
-    const result = await pool.query(
-      'SELECT id, name, email, phone, address, role, password_hash FROM users WHERE phone = $1',
-      [phone.trim()]
-    );
+    const derivedEmail = `${phone.trim().replace(/[^0-9]/g, '')}@phone.user`;
 
-    // No account found — tell the frontend to redirect to signup
-    if (result.rowCount === 0) {
+    // prisma.user.findUnique() replaces:
+    //   SELECT * FROM public.users WHERE email = $1
+    // `select` ensures password_hash is fetched for comparison but never
+    // forwarded to the client in the success response below.
+    const user = await prisma.user.findUnique({
+      where:  { email: derivedEmail },
+      select: {
+        id:            true,
+        full_name:     true,
+        email:         true,
+        phone:         true,
+        role:          true,
+        password_hash: true,
+      },
+    });
+
+    if (!user) {
       return res.status(404).json({
-        error: 'no_account',
+        error:   'no_account',
         message: 'No account found with this phone number. Please sign up first.',
       });
     }
 
-    const user = result.rows[0];
-
+    // Constant-time bcrypt comparison — safe against timing attacks.
     const passwordMatch = await bcrypt.compare(password, user.password_hash);
     if (!passwordMatch) {
       return res.status(401).json({
-        error: 'wrong_password',
+        error:   'wrong_password',
         message: 'Incorrect password. Please try again.',
       });
     }
 
+    // Never return password_hash to the client.
     return res.status(200).json({
       message: 'Login successful.',
       user: {
-        name: user.name,
-        email: user.email ?? `${user.phone.replace(/[^0-9]/g, '')}@phone.user`,
+        name:  user.full_name,
+        email: user.email,
         phone: user.phone,
-        role: user.role,
-        address: user.address,
+        role:  user.role,
       },
     });
   } catch (error) {
@@ -148,13 +257,24 @@ export const loginUser = async (req: Request, res: Response) => {
   }
 };
 
-// Keep the old createUser for backward compat with seeding scripts
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/users  (admin quick-create — no password)
+// ─────────────────────────────────────────────────────────────────────────────
+
 export const createUser = async (req: Request, res: Response) => {
   const { name, email, role } = req.body;
   try {
-    const query = `INSERT INTO users (name, email, role) VALUES ($1, $2, $3) RETURNING *`;
-    const result = await pool.query(query, [name, email, role || 'renter']);
-    res.status(201).json(result.rows[0]);
+    // prisma.user.create() replaces:
+    //   INSERT INTO public.users (full_name, email, password_hash, role) VALUES ($1, $2, '', $3)
+    const user = await prisma.user.create({
+      data: {
+        full_name:     name,
+        email,
+        password_hash: '',
+        role:          role === 'owner' ? 'OWNER' : 'TENANT',
+      },
+    });
+    res.status(201).json(user);
   } catch (error) {
     console.error('Error creating user:', error);
     res.status(500).json({ error: 'Internal server error' });

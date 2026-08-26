@@ -131,7 +131,7 @@ const mockOrders: WorkOrder[] = [
     propertyName: 'Sunset Villa #4B',
     renterName: 'Sarah Williams',
     submittedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-    description: 'Door won't stay closed during cycle.',
+    description: "Door won't stay closed during cycle.",
     assignedVendor: 'All-Pro Handyman',
     estimatedCost: 75,
   },

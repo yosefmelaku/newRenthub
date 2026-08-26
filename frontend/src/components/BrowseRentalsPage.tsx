@@ -3,60 +3,10 @@ import {
   Search, Home, Sparkles, Building2, BedDouble,
   SlidersHorizontal, ChevronDown, MapPin, Bed, Bath,
   SquareStack, Star, Tag, CheckCircle2, X, ArrowRight,
-  ShieldCheck, Landmark, Phone, BadgeCheck, Ruler,
+  ShieldCheck, Landmark, Phone, BadgeCheck, Ruler, Clock,
 } from 'lucide-react';
 import type { PropertyListing } from '../types';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Read owner-posted properties from localStorage and convert to PropertyListing
-// so they appear alongside API listings on the browse page.
-// This is the bridge that makes uploaded images visible here after posting.
-// ─────────────────────────────────────────────────────────────────────────────
-
-const OWNER_STORAGE_KEY = 'renthub_owner_properties';
-
-interface StoredOwnerProperty {
-  id: string;
-  title: string;
-  type: 'House' | 'Villa' | 'Office' | 'Studio';
-  address: string;
-  monthlyRent: number;
-  imageUrl: string | null;
-  tenantUnitCount: number;
-}
-
-function typeMap(t: StoredOwnerProperty['type']): PropertyListing['type'] {
-  const m: Record<string, PropertyListing['type']> = {
-    House: 'house', Villa: 'villa', Office: 'office', Studio: 'studio',
-  };
-  return m[t] ?? 'house';
-}
-
-function loadOwnerListings(): PropertyListing[] {
-  try {
-    const raw = localStorage.getItem(OWNER_STORAGE_KEY);
-    if (!raw) return [];
-    const stored: StoredOwnerProperty[] = JSON.parse(raw);
-    return stored.map(p => ({
-      id:           p.id,
-      title:        p.title,
-      description:  `${p.type} property located at ${p.address}`,
-      location:     p.address,
-      price:        p.monthlyRent,
-      type:         typeMap(p.type),
-      beds:         p.type === 'Studio' ? 1 : p.type === 'Office' ? 0 : 3,
-      baths:        p.type === 'Office' ? 1 : 2,
-      image:        p.imageUrl ?? '/villa.png',
-      amenities:    [],
-      rating:       4.5,
-      reviewsCount: 0,
-      ownerId:      'local-owner',
-      featured:     p.tenantUnitCount > 1,
-    }));
-  } catch {
-    return [];
-  }
-}
+import { loadOwnerListings, applyAvailabilityToListings } from '../lib/ownerProperties';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Fallback mock listings — used only when BOTH API and localStorage are empty
@@ -156,6 +106,14 @@ const typeLabel = (t: string) =>
 const sqftFromBeds = (beds: number) => (beds > 0 ? beds * 450 + 600 : 2400);
 const isBundleEligible = (p: PropertyListing) => !!p.featured;
 const isRealEstate = (p: PropertyListing) => p.type === 'realestate';
+const isOffice = (p: PropertyListing) => p.type === 'office';
+const getAvailability = (p: PropertyListing) => p.availabilityStatus ?? 'available';
+
+const AVAILABILITY_BADGE: Record<string, { label: string; cls: string; pulse?: boolean }> = {
+  available: { label: 'Available Now', cls: 'bg-emerald-500 text-white', pulse: true },
+  applied:   { label: 'Application Pending', cls: 'bg-amber-500 text-white' },
+  rented:    { label: 'Rented', cls: 'bg-slate-600 text-white' },
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Budget dropdown
@@ -220,10 +178,14 @@ const AgencyBadge: React.FC = () => (
 
 const RentalCard: React.FC<{ property: PropertyListing; onApply: (p: PropertyListing) => void }> = ({ property, onApply }) => {
   const isRE   = isRealEstate(property);
+  const isOff  = isOffice(property);
   const bundle = isBundleEligible(property);
-  const sqft   = sqftFromBeds(property.beds);
+  const sqft   = property.officeSqm && property.officeSqm > 0 ? property.officeSqm : sqftFromBeds(property.beds);
   const badge  = TYPE_BADGE[property.type] ?? 'bg-slate-50 text-slate-700 border-slate-200';
   const catIcon = CATEGORIES.find(c => c.id === property.type)?.icon ?? <SquareStack className="h-3 w-3" />;
+  const availability = getAvailability(property);
+  const availBadge = AVAILABILITY_BADGE[availability];
+  const canApply = availability === 'available';
 
   return (
     <article className="group bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 flex flex-col overflow-hidden">
@@ -235,10 +197,13 @@ const RentalCard: React.FC<{ property: PropertyListing; onApply: (p: PropertyLis
           loading="lazy" referrerPolicy="no-referrer"
           onError={e => { (e.target as HTMLImageElement).src = '/villa.png'; }} />
 
-        {/* Available badge */}
-        <span className="absolute top-3 left-3 inline-flex items-center gap-1.5 bg-emerald-500 text-white text-[11px] font-bold px-2.5 py-1 rounded-full shadow-sm">
-          <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-          Available Now
+        {/* Availability badge */}
+        <span className={`absolute top-3 left-3 inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full shadow-sm ${availBadge.cls}`}>
+          {availBadge.pulse && <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />}
+          {!availBadge.pulse && availability === 'applied' && <Clock className="h-3 w-3" />}
+          {availability === 'available' && (property.remainingUnits ?? 0) > 0 && (property.totalUnits ?? 1) > 1
+            ? `${property.remainingUnits} room${property.remainingUnits === 1 ? '' : 's'} left`
+            : availBadge.label}
         </span>
 
         {/* Type badge */}
@@ -300,13 +265,25 @@ const RentalCard: React.FC<{ property: PropertyListing; onApply: (p: PropertyLis
 
         {!isRE && (
           <div className="flex items-center gap-3 text-xs text-slate-500 font-medium border-t border-slate-100 pt-3">
-            {property.beds > 0 && <>
-              <span className="flex items-center gap-1"><Bed className="h-3.5 w-3.5 text-slate-400" /> {property.beds} {property.beds === 1 ? 'Bed' : 'Beds'}</span>
-              <span className="w-px h-3.5 bg-slate-200" />
-            </>}
-            <span className="flex items-center gap-1"><Bath className="h-3.5 w-3.5 text-slate-400" /> {property.baths} {property.baths === 1 ? 'Bath' : 'Baths'}</span>
-            <span className="w-px h-3.5 bg-slate-200" />
-            <span className="flex items-center gap-1"><SquareStack className="h-3.5 w-3.5 text-slate-400" /> {sqft.toLocaleString()} sqft</span>
+            {isOff ? (
+              <>
+                <span className="flex items-center gap-1"><Ruler className="h-3.5 w-3.5 text-slate-400" /> {property.officeSqm ?? sqft} sqm</span>
+                <span className="w-px h-3.5 bg-slate-200" />
+                <span className="flex items-center gap-1"><Building2 className="h-3.5 w-3.5 text-slate-400" /> {property.meetingRooms ?? 0} rooms</span>
+                <span className="w-px h-3.5 bg-slate-200" />
+                <span className="flex items-center gap-1"><SquareStack className="h-3.5 w-3.5 text-slate-400" /> {property.parkingSpaces ?? 0} parking</span>
+              </>
+            ) : (
+              <>
+                {property.beds > 0 && <>
+                  <span className="flex items-center gap-1"><Bed className="h-3.5 w-3.5 text-slate-400" /> {property.beds} {property.beds === 1 ? 'Bed' : 'Beds'}</span>
+                  <span className="w-px h-3.5 bg-slate-200" />
+                </>}
+                <span className="flex items-center gap-1"><Bath className="h-3.5 w-3.5 text-slate-400" /> {property.baths} {property.baths === 1 ? 'Bath' : 'Baths'}</span>
+                <span className="w-px h-3.5 bg-slate-200" />
+                <span className="flex items-center gap-1"><SquareStack className="h-3.5 w-3.5 text-slate-400" /> {sqft.toLocaleString()} sqft</span>
+              </>
+            )}
           </div>
         )}
 
@@ -324,11 +301,18 @@ const RentalCard: React.FC<{ property: PropertyListing; onApply: (p: PropertyLis
             <span className="text-xs text-slate-400 font-medium ml-1">/ mo</span>
             {isRE && <p className="text-[10px] text-indigo-600 font-semibold mt-0.5">Commercial lease</p>}
           </div>
-          <button onClick={() => onApply(property)}
+          <button onClick={() => canApply && onApply(property)}
+            disabled={!canApply}
             className={`inline-flex items-center gap-1.5 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition shadow-sm shrink-0
-              ${isRE ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
-            {isRE ? 'Request Viewing' : 'Apply to Rent'}
-            <ArrowRight className="h-3.5 w-3.5" />
+              ${!canApply
+                ? 'bg-slate-300 cursor-not-allowed'
+                : isRE
+                  ? 'bg-indigo-600 hover:bg-indigo-700'
+                  : 'bg-emerald-600 hover:bg-emerald-700'}`}>
+            {!canApply
+              ? (availability === 'applied' ? 'Applied' : 'Fully Rented')
+              : (isRE ? 'Request Viewing' : 'Apply to Rent')}
+            {canApply && <ArrowRight className="h-3.5 w-3.5" />}
           </button>
         </div>
       </div>
@@ -372,9 +356,11 @@ export const BrowseRentalsPage: React.FC<BrowseRentalsPageProps> = ({
     const apiOrFallback = listings.length > 0 ? listings : MOCK_LISTINGS;
     const merged = [...apiOrFallback];
     ownerListings.forEach(op => {
-      if (!merged.find(p => p.id === op.id)) merged.unshift(op); // owner posts go first
+      const idx = merged.findIndex(p => p.id === op.id);
+      if (idx >= 0) merged[idx] = op;
+      else merged.unshift(op);
     });
-    return merged;
+    return applyAvailabilityToListings(merged);
   }, [listings, ownerListings]);
 
   const clearAll = () => { setCategory('all'); setBudget('all'); onSearchTermChange(''); };
@@ -404,7 +390,7 @@ export const BrowseRentalsPage: React.FC<BrowseRentalsPageProps> = ({
             <div className="shrink-0">
               <h1 className="text-xl font-extrabold text-slate-900">Browse Rentals</h1>
               <p className="text-xs text-slate-500 mt-0.5">
-                {filtered.length} {filtered.length === 1 ? 'property' : 'properties'} available
+                {filtered.length} {filtered.length === 1 ? 'property' : 'properties'}
                 {ownerListings.length > 0 && (
                   <span className="ml-2 text-emerald-600 font-semibold">· {ownerListings.length} owner-posted</span>
                 )}

@@ -3,76 +3,90 @@ import {
   Plus, X, UploadCloud, Home, Building2, Briefcase,
   BedDouble, Tag, DollarSign, MapPin, CheckCircle2,
   ImageOff, Users, Sparkles, Pencil, Trash2, AlertTriangle,
+  ArrowRight, ArrowLeft, Bath,
 } from 'lucide-react';
+import {
+  type OwnerProperty,
+  type PropertyType,
+  loadOwnerProperties,
+  saveOwnerProperties,
+  CITIES,
+  ADDIS_ABABA_SUBCITIES,
+} from '../../lib/ownerProperties';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Types
+// Form state
 // ─────────────────────────────────────────────────────────────────────────────
-
-type PropertyType = 'House' | 'Villa' | 'Office' | 'Studio';
-
-interface Property {
-  id: string;
-  title: string;
-  type: PropertyType;
-  address: string;
-  monthlyRent: number;
-  /**
-   * imageUrl is stored as a base64 data-URL in localStorage so it persists
-   * across navigation. In production this would be the server-returned CDN URL
-   * from POST /api/properties/upload-image, stored in the image_url DB column.
-   */
-  imageUrl: string | null;
-  tenantUnitCount: number;
-}
 
 interface FormState {
   title: string;
   type: PropertyType;
+  city: string;
+  subcity: string;
   address: string;
   monthlyRent: string;
+  beds: string;
+  baths: string;
+  officeSqm: string;
+  meetingRooms: string;
+  parkingSpaces: string;
+  totalUnits: string;
   imagePreview: string | null;
   imageFile: File | null;
 }
 
 const BLANK_FORM: FormState = {
-  title: '', type: 'House', address: '', monthlyRent: '',
+  title: '', type: 'House', city: 'Addis Ababa', subcity: '', address: '',
+  monthlyRent: '', beds: '2', baths: '1', officeSqm: '', meetingRooms: '1', parkingSpaces: '0',
+  totalUnits: '1',
   imagePreview: null, imageFile: null,
 };
 
-const STORAGE_KEY = 'renthub_owner_properties';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Persistence helpers
-// ─────────────────────────────────────────────────────────────────────────────
-
-function loadProperties(): Property[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : SEED_PROPERTIES;
-  } catch {
-    return SEED_PROPERTIES;
-  }
+function propertyToForm(p: OwnerProperty): FormState {
+  return {
+    title: p.title,
+    type: p.type,
+    city: p.city,
+    subcity: p.subcity,
+    address: p.address,
+    monthlyRent: String(p.monthlyRent),
+    beds: String(p.beds),
+    baths: String(p.baths),
+    officeSqm: String(p.officeSqm || ''),
+    meetingRooms: String(p.meetingRooms || ''),
+    parkingSpaces: String(p.parkingSpaces || ''),
+    totalUnits: String(p.totalUnits || p.tenantUnitCount || 1),
+    imagePreview: p.imageUrl,
+    imageFile: null,
+  };
 }
 
-function saveProperties(list: Property[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
-  } catch (e) {
-    // localStorage quota can be hit with large base64 images; warn silently
-    console.warn('Could not persist properties to localStorage:', e);
-  }
+function formToProperty(form: FormState, existing?: OwnerProperty): Omit<OwnerProperty, 'id'> {
+  const isOffice = form.type === 'Office';
+  const address = form.city === 'Addis Ababa'
+    ? `${form.subcity}, Addis Ababa, Ethiopia`
+    : form.address.trim();
+  const totalUnits = Math.max(1, Number(form.totalUnits) || 1);
+
+  return {
+    title: form.title.trim(),
+    type: form.type,
+    city: form.city,
+    subcity: form.subcity,
+    address,
+    monthlyRent: Number(form.monthlyRent),
+    beds: isOffice ? 0 : Number(form.beds) || 1,
+    baths: Number(form.baths) || 1,
+    officeSqm: isOffice ? Number(form.officeSqm) || 0 : 0,
+    meetingRooms: isOffice ? Number(form.meetingRooms) || 0 : 0,
+    parkingSpaces: isOffice ? Number(form.parkingSpaces) || 0 : 0,
+    imageUrl: form.imagePreview,
+    tenantUnitCount: totalUnits,
+    totalUnits,
+    rentedUnits: existing?.rentedUnits ?? 0,
+    status: existing?.status ?? 'available',
+  };
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Seed data (used only on first load when localStorage is empty)
-// ─────────────────────────────────────────────────────────────────────────────
-
-const SEED_PROPERTIES: Property[] = [
-  { id: 'seed-1', title: 'Sunrise Villa Block A',   type: 'Villa',  address: '12 Hilltop Lane, Beverly Hills, CA', monthlyRent: 8500, imageUrl: '/villa.png',   tenantUnitCount: 2 },
-  { id: 'seed-2', title: 'Downtown Office Suite 4B', type: 'Office', address: '88 Commerce Blvd, Chicago, IL',       monthlyRent: 4200, imageUrl: '/office.png', tenantUnitCount: 1 },
-  { id: 'seed-3', title: 'Garden Studio — Unit 7',   type: 'Studio', address: '9 Palm Street, Miami, FL',            monthlyRent: 1800, imageUrl: null,           tenantUnitCount: 3 },
-];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared UI constants
@@ -172,13 +186,32 @@ interface FormFieldsProps {
   onImageFile: (file: File) => void;
   onImageClear: () => void;
   error: string;
+  showImage?: boolean;
 }
 
-const FormFields: React.FC<FormFieldsProps> = ({ form, onChange, onImageFile, onImageClear, error }) => (
+const FormFields: React.FC<FormFieldsProps> = ({ form, onChange, onImageFile, onImageClear, error, showImage = true }) => {
+  const isOffice = form.type === 'Office';
+  const isAddis = form.city === 'Addis Ababa';
+
+  return (
   <div className="space-y-5">
     {error && (
       <div className="flex items-center gap-2 text-xs font-semibold text-rose-600 bg-rose-50 border border-rose-200 px-3 py-2.5 rounded-lg">
         <AlertTriangle className="h-3.5 w-3.5 shrink-0" />{error}
+      </div>
+    )}
+
+    {showImage && (
+      <div className="space-y-1.5">
+        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">
+          Property Image
+        </label>
+        <UploadZone
+          preview={form.imagePreview}
+          onFile={onImageFile}
+          onClear={onImageClear}
+          fileName={form.imageFile?.name}
+        />
       </div>
     )}
 
@@ -188,7 +221,7 @@ const FormFields: React.FC<FormFieldsProps> = ({ form, onChange, onImageFile, on
         Property Title <span className="text-rose-400">*</span>
       </label>
       <input
-        type="text" required placeholder="e.g. Sunrise Villa Block A"
+        type="text" required placeholder="e.g. Bole Garden Villa"
         value={form.title} onChange={e => onChange('title', e.target.value)}
         className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 transition"
       />
@@ -214,19 +247,106 @@ const FormFields: React.FC<FormFieldsProps> = ({ form, onChange, onImageFile, on
       </div>
     </div>
 
-    {/* Address */}
+    {/* City */}
     <div className="space-y-1.5">
       <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">
-        Address <span className="text-rose-400">*</span>
+        City <span className="text-rose-400">*</span>
       </label>
-      <div className="relative">
-        <MapPin className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-        <input
-          type="text" required placeholder="123 Main St, City"
-          value={form.address} onChange={e => onChange('address', e.target.value)}
-          className="w-full border border-gray-200 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 transition"
-        />
+      <select
+        value={form.city}
+        onChange={e => onChange('city', e.target.value)}
+        className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 transition bg-white"
+      >
+        {CITIES.map(c => <option key={c} value={c}>{c}</option>)}
+      </select>
+    </div>
+
+    {/* Addis Ababa subcity OR free-text address */}
+    {isAddis ? (
+      <div className="space-y-1.5">
+        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">
+          Sub-City / Area in Addis Ababa <span className="text-rose-400">*</span>
+        </label>
+        <div className="relative">
+          <MapPin className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <select
+            required
+            value={form.subcity}
+            onChange={e => onChange('subcity', e.target.value)}
+            className="w-full border border-gray-200 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 transition bg-white"
+          >
+            <option value="">Select area…</option>
+            {ADDIS_ABABA_SUBCITIES.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
       </div>
+    ) : (
+      <div className="space-y-1.5">
+        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">
+          Full Address <span className="text-rose-400">*</span>
+        </label>
+        <div className="relative">
+          <MapPin className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <input
+            type="text" required placeholder="Street, city, country"
+            value={form.address} onChange={e => onChange('address', e.target.value)}
+            className="w-full border border-gray-200 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 transition"
+          />
+        </div>
+      </div>
+    )}
+
+    {/* Type-specific details */}
+    {isOffice ? (
+      <div className="grid grid-cols-3 gap-3">
+        <div className="space-y-1.5">
+          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Size (sqm) *</label>
+          <input type="number" min="1" required placeholder="120"
+            value={form.officeSqm} onChange={e => onChange('officeSqm', e.target.value)}
+            className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 transition" />
+        </div>
+        <div className="space-y-1.5">
+          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Meeting Rooms *</label>
+          <input type="number" min="0" required placeholder="2"
+            value={form.meetingRooms} onChange={e => onChange('meetingRooms', e.target.value)}
+            className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 transition" />
+        </div>
+        <div className="space-y-1.5">
+          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Parking *</label>
+          <input type="number" min="0" required placeholder="4"
+            value={form.parkingSpaces} onChange={e => onChange('parkingSpaces', e.target.value)}
+            className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 transition" />
+        </div>
+      </div>
+    ) : (
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1.5">
+          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">
+            <BedDouble className="inline h-3.5 w-3.5 mr-1" /> Bedrooms *
+          </label>
+          <input type="number" min="1" required
+            value={form.beds} onChange={e => onChange('beds', e.target.value)}
+            className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 transition" />
+        </div>
+        <div className="space-y-1.5">
+          <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">
+            <Bath className="inline h-3.5 w-3.5 mr-1" /> Bathrooms *
+          </label>
+          <input type="number" min="1" required
+            value={form.baths} onChange={e => onChange('baths', e.target.value)}
+            className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 transition" />
+        </div>
+      </div>
+    )}
+
+    <div className="space-y-1.5">
+      <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">
+        Rooms / Units for rent <span className="text-rose-400">*</span>
+      </label>
+      <input type="number" min="1" required
+        value={form.totalUnits} onChange={e => onChange('totalUnits', e.target.value)}
+        className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 transition" />
+      <p className="text-[11px] text-gray-400">When every room is rented, this listing will no longer show as available.</p>
     </div>
 
     {/* Monthly Rent */}
@@ -243,21 +363,9 @@ const FormFields: React.FC<FormFieldsProps> = ({ form, onChange, onImageFile, on
         />
       </div>
     </div>
-
-    {/* Image */}
-    <div className="space-y-1.5">
-      <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">
-        Property Image
-      </label>
-      <UploadZone
-        preview={form.imagePreview}
-        onFile={onImageFile}
-        onClear={onImageClear}
-        fileName={form.imageFile?.name}
-      />
-    </div>
   </div>
-);
+  );
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Add Property Modal
@@ -265,10 +373,24 @@ const FormFields: React.FC<FormFieldsProps> = ({ form, onChange, onImageFile, on
 
 interface AddModalProps {
   onClose: () => void;
-  onSave: (p: Omit<Property, 'id' | 'tenantUnitCount'>) => void;
+  onSave: (p: Omit<OwnerProperty, 'id'>) => void;
+}
+
+function validateDetails(form: FormState): string {
+  if (!form.title.trim()) return 'Please enter a property title.';
+  if (form.city === 'Addis Ababa' && !form.subcity) return 'Please select an Addis Ababa area.';
+  if (form.city !== 'Addis Ababa' && !form.address.trim()) return 'Please enter the full address.';
+  if (!form.monthlyRent) return 'Please enter the monthly rent.';
+  if (form.type === 'Office') {
+    if (!form.officeSqm) return 'Please enter office size in sqm.';
+  } else {
+    if (!form.beds || !form.baths) return 'Please enter bedrooms and bathrooms.';
+  }
+  return '';
 }
 
 const AddPropertyModal: React.FC<AddModalProps> = ({ onClose, onSave }) => {
+  const [step, setStep] = useState<1 | 2>(1);
   const [form, setForm] = useState<FormState>(BLANK_FORM);
   const [error, setError] = useState('');
 
@@ -283,16 +405,20 @@ const AddPropertyModal: React.FC<AddModalProps> = ({ onClose, onSave }) => {
     reader.readAsDataURL(file);
   }, []);
 
+  const handleNext = () => {
+    if (!form.imagePreview) {
+      setError('Please upload a property image first.');
+      return;
+    }
+    setError('');
+    setStep(2);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.title.trim() || !form.address.trim() || !form.monthlyRent) {
-      setError('Please fill in all required fields.'); return;
-    }
-    onSave({
-      title: form.title.trim(), type: form.type,
-      address: form.address.trim(), monthlyRent: Number(form.monthlyRent),
-      imageUrl: form.imagePreview,
-    });
+    const msg = validateDetails(form);
+    if (msg) { setError(msg); return; }
+    onSave(formToProperty(form));
     onClose();
   };
 
@@ -300,27 +426,59 @@ const AddPropertyModal: React.FC<AddModalProps> = ({ onClose, onSave }) => {
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100 sticky top-0 bg-white z-10">
-          <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-            <Plus className="h-5 w-5 text-emerald-600" /> Add New Property
-          </h2>
+          <div>
+            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+              <Plus className="h-5 w-5 text-emerald-600" /> Add New Property
+            </h2>
+            <p className="text-xs text-gray-400 mt-0.5">Step {step} of 2 — {step === 1 ? 'Upload photo' : 'Property details'}</p>
+          </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition p-1 rounded-lg hover:bg-gray-100">
             <X className="h-5 w-5" />
           </button>
         </div>
-        <form onSubmit={handleSubmit} className="px-6 py-5">
-          <FormFields form={form} onChange={onChange} onImageFile={onImageFile}
-            onImageClear={() => setForm(p => ({ ...p, imagePreview: null, imageFile: null }))} error={error} />
-          <div className="flex gap-3 pt-6">
-            <button type="button" onClick={onClose}
-              className="flex-1 border border-gray-200 text-gray-600 font-semibold text-sm rounded-xl py-2.5 hover:bg-gray-50 transition">
-              Cancel
-            </button>
-            <button type="submit"
-              className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm rounded-xl py-2.5 transition shadow-sm flex items-center justify-center gap-2">
-              <CheckCircle2 className="h-4 w-4" /> Save Property
-            </button>
+
+        {step === 1 ? (
+          <div className="px-6 py-5 space-y-5">
+            {error && (
+              <div className="flex items-center gap-2 text-xs font-semibold text-rose-600 bg-rose-50 border border-rose-200 px-3 py-2.5 rounded-lg">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" />{error}
+              </div>
+            )}
+            <p className="text-sm text-gray-500">Start by uploading a photo of your property. You can fill in the details on the next step.</p>
+            <UploadZone
+              preview={form.imagePreview}
+              onFile={onImageFile}
+              onClear={() => setForm(p => ({ ...p, imagePreview: null, imageFile: null }))}
+              fileName={form.imageFile?.name}
+            />
+            <div className="flex gap-3 pt-2">
+              <button type="button" onClick={onClose}
+                className="flex-1 border border-gray-200 text-gray-600 font-semibold text-sm rounded-xl py-2.5 hover:bg-gray-50 transition">
+                Cancel
+              </button>
+              <button type="button" onClick={handleNext}
+                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm rounded-xl py-2.5 transition shadow-sm flex items-center justify-center gap-2">
+                Next: Add Details <ArrowRight className="h-4 w-4" />
+              </button>
+            </div>
           </div>
-        </form>
+        ) : (
+          <form onSubmit={handleSubmit} className="px-6 py-5">
+            <FormFields form={form} onChange={onChange} onImageFile={onImageFile}
+              onImageClear={() => setForm(p => ({ ...p, imagePreview: null, imageFile: null }))}
+              error={error} showImage={false} />
+            <div className="flex gap-3 pt-6">
+              <button type="button" onClick={() => { setStep(1); setError(''); }}
+                className="flex items-center justify-center gap-1.5 border border-gray-200 text-gray-600 font-semibold text-sm rounded-xl py-2.5 px-4 hover:bg-gray-50 transition">
+                <ArrowLeft className="h-4 w-4" /> Back
+              </button>
+              <button type="submit"
+                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm rounded-xl py-2.5 transition shadow-sm flex items-center justify-center gap-2">
+                <CheckCircle2 className="h-4 w-4" /> Save Property
+              </button>
+            </div>
+          </form>
+        )}
       </div>
     </div>
   );
@@ -331,17 +489,13 @@ const AddPropertyModal: React.FC<AddModalProps> = ({ onClose, onSave }) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface EditModalProps {
-  property: Property;
+  property: OwnerProperty;
   onClose: () => void;
-  onSave: (updated: Property) => void;
+  onSave: (updated: OwnerProperty) => void;
 }
 
 const EditPropertyModal: React.FC<EditModalProps> = ({ property, onClose, onSave }) => {
-  const [form, setForm] = useState<FormState>({
-    title: property.title, type: property.type,
-    address: property.address, monthlyRent: String(property.monthlyRent),
-    imagePreview: property.imageUrl, imageFile: null,
-  });
+  const [form, setForm] = useState<FormState>(propertyToForm(property));
   const [error, setError] = useState('');
 
   const onChange = (key: keyof FormState, value: string) =>
@@ -357,15 +511,9 @@ const EditPropertyModal: React.FC<EditModalProps> = ({ property, onClose, onSave
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.title.trim() || !form.address.trim() || !form.monthlyRent) {
-      setError('Please fill in all required fields.'); return;
-    }
-    onSave({
-      ...property,
-      title: form.title.trim(), type: form.type,
-      address: form.address.trim(), monthlyRent: Number(form.monthlyRent),
-      imageUrl: form.imagePreview,
-    });
+    const msg = validateDetails(form);
+    if (msg) { setError(msg); return; }
+    onSave({ ...property, ...formToProperty(form, property) });
     onClose();
   };
 
@@ -404,7 +552,7 @@ const EditPropertyModal: React.FC<EditModalProps> = ({ property, onClose, onSave
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface DeleteDialogProps {
-  property: Property;
+  property: OwnerProperty;
   onCancel: () => void;
   onConfirm: () => void;
 }
@@ -442,15 +590,25 @@ const DeleteDialog: React.FC<DeleteDialogProps> = ({ property, onCancel, onConfi
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface CardProps {
-  property: Property;
+  property: OwnerProperty;
   totalCount: number;
-  onEdit: (p: Property) => void;
-  onDelete: (p: Property) => void;
+  onEdit: (p: OwnerProperty) => void;
+  onDelete: (p: OwnerProperty) => void;
 }
+
+const STATUS_LABEL: Record<string, string> = {
+  available: 'Available',
+  applied: 'Application Pending',
+  rented: 'Rented',
+};
 
 const PropertyCard: React.FC<CardProps> = ({ property, totalCount, onEdit, onDelete }) => {
   const ownerDiscount = totalCount > 1;
   const tenantBundle  = property.tenantUnitCount > 1;
+  const isOffice = property.type === 'Office';
+  const displayAddress = property.city === 'Addis Ababa' && property.subcity
+    ? `${property.subcity}, Addis Ababa`
+    : property.address;
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col group">
@@ -470,6 +628,15 @@ const PropertyCard: React.FC<CardProps> = ({ property, totalCount, onEdit, onDel
         {/* Type badge */}
         <span className={`absolute top-3 left-3 inline-flex items-center gap-1 border text-[11px] font-bold px-2.5 py-1 rounded-full shadow-sm bg-white/90 backdrop-blur-sm ${TYPE_COLORS[property.type]}`}>
           {TYPE_ICONS[property.type]}{property.type}
+        </span>
+
+        {/* Status badge */}
+        <span className={`absolute bottom-3 left-3 text-[10px] font-bold px-2 py-1 rounded-full shadow-sm ${
+          property.status === 'available' ? 'bg-emerald-500 text-white'
+          : property.status === 'applied' ? 'bg-amber-500 text-white'
+          : 'bg-slate-600 text-white'
+        }`}>
+          {STATUS_LABEL[property.status]}
         </span>
 
         {/* Action buttons — visible on hover */}
@@ -496,7 +663,13 @@ const PropertyCard: React.FC<CardProps> = ({ property, totalCount, onEdit, onDel
         <div>
           <h3 className="font-bold text-gray-900 text-base leading-snug truncate">{property.title}</h3>
           <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1 truncate">
-            <MapPin className="h-3 w-3 shrink-0" />{property.address}
+            <MapPin className="h-3 w-3 shrink-0" />{displayAddress}
+          </p>
+          <p className="text-[11px] text-gray-500 mt-1">
+            {isOffice
+              ? `${property.officeSqm} sqm · ${property.meetingRooms} meeting room(s) · ${property.parkingSpaces} parking`
+              : `${property.beds} bed · ${property.baths} bath`}
+            {' · '}{property.rentedUnits}/{property.totalUnits} rooms rented
           </p>
         </div>
 
@@ -542,22 +715,20 @@ const PropertyCard: React.FC<CardProps> = ({ property, totalCount, onEdit, onDel
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const MyPropertiesPage: React.FC = () => {
-  // Load from localStorage on mount — survives navigation
-  const [properties, setProperties] = useState<Property[]>(loadProperties);
+  const [properties, setProperties] = useState<OwnerProperty[]>(loadOwnerProperties);
   const [showAdd,    setShowAdd]     = useState(false);
-  const [editTarget, setEditTarget]  = useState<Property | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<Property | null>(null);
+  const [editTarget, setEditTarget]  = useState<OwnerProperty | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<OwnerProperty | null>(null);
 
-  // Persist to localStorage every time the list changes
   useEffect(() => {
-    saveProperties(properties);
+    saveOwnerProperties(properties);
   }, [properties]);
 
-  const handleAdd = (data: Omit<Property, 'id' | 'tenantUnitCount'>) => {
-    setProperties(prev => [{ ...data, id: `prop-${Date.now()}`, tenantUnitCount: 1 }, ...prev]);
+  const handleAdd = (data: Omit<OwnerProperty, 'id'>) => {
+    setProperties(prev => [{ ...data, id: `prop-${Date.now()}` }, ...prev]);
   };
 
-  const handleEdit = (updated: Property) => {
+  const handleEdit = (updated: OwnerProperty) => {
     setProperties(prev => prev.map(p => p.id === updated.id ? updated : p));
   };
 
