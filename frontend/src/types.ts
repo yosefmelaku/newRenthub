@@ -1,11 +1,13 @@
 export type UserRole = 'renter' | 'owner' | 'super-admin';
 
 export interface AppUser {
+  id?: string;
   name: string;
   email?: string;
   role: UserRole;
   address?: string;
   phone?: string;
+  token?: string;
 }
 
 export type PropertyAvailabilityStatus = 'available' | 'applied' | 'rented';

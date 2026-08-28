@@ -1,12 +1,15 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
 import prisma from '../lib/prisma';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_renthub_key_2026_jwt_token_auth_sign_flow!';
 
 /**
  * POST /api/auth/login
  * Email + password login for all roles (owner, superadmin, tenant).
  * Uses bcrypt.compare — never plain-text comparison.
- * Returns the user's DB role exactly as stored so the frontend can route correctly.
+ * Returns the user's DB role and a secure signed JWT token.
  */
 export const login = async (req: Request, res: Response): Promise<void> => {
   const { email, password } = req.body;
@@ -40,7 +43,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Verify password with bcrypt — handles both hashed and legacy plain-text
+    // Verify password with bcrypt
     const passwordOk = user.password_hash
       ? await bcrypt.compare(password, user.password_hash)
       : false;
@@ -50,12 +53,19 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Record the session
-    await prisma.userSession.create({ data: { user_id: user.id } });
+    // Record the session in the DB
+    const session = await prisma.userSession.create({ data: { user_id: user.id } });
 
-    // role stored in DB as @map value e.g. "superadmin" | "owner" | "tenant"
+    // Generate JWT access token with 24 hours validity
+    const token = jwt.sign(
+      { id: user.id, email: user.email, role: user.role, sessionId: session.id },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
     res.status(200).json({
       success: true,
+      token,
       user: {
         id:    user.id,
         name:  user.full_name,
@@ -75,28 +85,27 @@ export const login = async (req: Request, res: Response): Promise<void> => {
  * Returns the currently authenticated user (resolved by loadUserFromHeader middleware).
  */
 export const whoami = async (req: Request, res: Response) => {
-  const header = (req.headers['x-user-email'] as string) || '';
-  const auth   = (req.headers['authorization']  as string) || '';
-  const email  = header || (auth.startsWith('Bearer ') ? auth.slice(7) : '');
-
-  if (!email) return res.status(401).json({ error: 'Unauthorized' });
+  const user = (req as any).user;
+  if (!user) {
+    return res.status(401).json({ error: 'Unauthorized', message: 'No active session found.' });
+  }
 
   try {
-    const user = await prisma.user.findUnique({
-      where:  { email },
+    const userDb = await prisma.user.findUnique({
+      where:  { id: user.id },
       select: { id: true, full_name: true, email: true, role: true, phone: true, is_active: true },
     });
 
-    if (!user)          return res.status(404).json({ error: 'Not found' });
-    if (!user.is_active) return res.status(403).json({ error: 'Account deactivated.' });
+    if (!userDb)          return res.status(404).json({ error: 'Not found' });
+    if (!userDb.is_active) return res.status(403).json({ error: 'Account deactivated.' });
 
     return res.status(200).json({
       user: {
-        id:    user.id,
-        name:  user.full_name,
-        email: user.email,
-        role:  user.role,
-        phone: user.phone,
+        id:    userDb.id,
+        name:  userDb.full_name,
+        email: userDb.email,
+        role:  userDb.role,
+        phone: userDb.phone,
       },
     });
   } catch (err) {
@@ -104,3 +113,32 @@ export const whoami = async (req: Request, res: Response) => {
     return res.status(500).json({ error: 'Internal server error' });
   }
 };
+
+/**
+ * POST /api/auth/logout
+ * Terminates the active session in the database.
+ */
+export const logout = async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  if (!user) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    if (user.sessionId) {
+      await prisma.userSession.update({
+        where: { id: user.sessionId },
+        data: { status: 'LOGGED_OUT' },
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Logged out successfully.',
+    });
+  } catch (err) {
+    console.error('[logout]', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};
+

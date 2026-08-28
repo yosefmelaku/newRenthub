@@ -41,6 +41,9 @@
 import { Request, Response } from 'express';
 import prisma from '../lib/prisma';
 import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_renthub_key_2026_jwt_token_auth_sign_flow!';
 
 /** bcrypt work factor — 12 rounds is a strong default for 2024+ hardware. */
 const SALT_ROUNDS = 12;
@@ -83,7 +86,7 @@ export const getUserById = async (req: Request, res: Response) => {
     // prisma.user.findUnique() replaces:
     //   SELECT id, full_name, email, phone, role FROM public.users WHERE id = $1
     const user = await prisma.user.findUnique({
-      where: { id },
+      where: { id: id as string },
       select: {
         id:        true,
         full_name: true,
@@ -166,6 +169,7 @@ export const signupUser = async (req: Request, res: Response) => {
         role:          userRole === 'owner' ? 'OWNER' : 'TENANT',
       },
       select: {
+        id:        true,
         full_name: true,
         email:     true,
         phone:     true,
@@ -173,9 +177,18 @@ export const signupUser = async (req: Request, res: Response) => {
       },
     });
 
+    const session = await prisma.userSession.create({ data: { user_id: user.id } });
+    const token = jwt.sign(
+      { id: user.id, email: user.email, role: user.role, sessionId: session.id },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
     return res.status(201).json({
       message: 'Account created successfully.',
+      token,
       user: {
+        id:    user.id,
         name:  user.full_name,
         email: user.email,
         phone: user.phone,
@@ -241,10 +254,19 @@ export const loginUser = async (req: Request, res: Response) => {
       });
     }
 
+    const session = await prisma.userSession.create({ data: { user_id: user.id } });
+    const token = jwt.sign(
+      { id: user.id, email: user.email, role: user.role, sessionId: session.id },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
     // Never return password_hash to the client.
     return res.status(200).json({
       message: 'Login successful.',
+      token,
       user: {
+        id:    user.id,
         name:  user.full_name,
         email: user.email,
         phone: user.phone,

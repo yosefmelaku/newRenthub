@@ -7,10 +7,10 @@ const API = '/api';
 // resolves the full user record from the DB via this email.
 const authHeaders = (): Record<string, string> => {
   const raw   = typeof window !== 'undefined' ? localStorage.getItem('currentUser') : null;
-  const email = raw ? JSON.parse(raw).email ?? '' : '';
+  const token = raw ? JSON.parse(raw).token ?? '' : '';
   return {
     'Content-Type':  'application/json',
-    ...(email ? { Authorization: `Bearer ${email}` } : {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 };
 
@@ -189,4 +189,18 @@ export async function rejectProperty(propertyId: string): Promise<void> {
 export async function fetchRentalsMatrix(): Promise<{ count: number; rentalsMatrix: any[] }> {
   const res = await fetch(`${API}/admin/rentals-matrix`, { headers: authHeaders() });
   return handleResponse<{ count: number; rentalsMatrix: any[] }>(res);
+}
+
+// ── Auth Logout ───────────────────────────────────────────────────────────────
+
+export async function logoutUser(): Promise<void> {
+  try {
+    const res = await fetch(`${API}/auth/logout`, {
+      method: 'POST',
+      headers: authHeaders(),
+    });
+    await handleResponse<void>(res);
+  } catch (e) {
+    console.error('Backend logout failed', e);
+  }
 }

@@ -92,14 +92,14 @@ export const LoginPage: React.FC<LoginPageProps> = ({
           });
           const d2 = await r2.json();
           if (!r2.ok) { setErrorMsg(d2.message ?? d2.error ?? 'Login failed.'); return; }
-          onLogin({ name: d2.user.name, email: d2.user.email, role: d2.user.role, phone: d2.user.phone });
+          onLogin({ id: d2.user.id, name: d2.user.name, email: d2.user.email, role: d2.user.role, phone: d2.user.phone, token: d2.token });
           return;
         }
         setErrorMsg(data.message ?? data.error ?? 'Registration failed.');
         return;
       }
 
-      onLogin({ name: data.user.name, email: data.user.email, role: data.user.role, phone: data.user.phone });
+      onLogin({ id: data.user.id, name: data.user.name, email: data.user.email, role: data.user.role, phone: data.user.phone, token: data.token });
     } catch {
       setErrorMsg('Network error — please check the server is running.');
     } finally {
@@ -132,7 +132,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
         return;
       }
 
-      onLogin({ name: data.user.name, email: data.user.email, role: data.user.role, phone: data.user.phone });
+      onLogin({ id: data.user.id, name: data.user.name, email: data.user.email, role: data.user.role, phone: data.user.phone, token: data.token });
     } catch {
       setErrorMsg('Network error — please check the server is running.');
     } finally {

@@ -6,6 +6,7 @@ import { PropertyDetailsModal } from './components/PropertyDetailsModal';
 import { CheckoutPaymentModal } from './components/CheckoutPaymentModal';
 import { DashboardPage as RenterDashboardPage }     from './pages/tenant/DashboardPage';
 import { LoginPage }            from './pages/login/LoginPage';
+import { AdminLoginPage }       from './pages/login/AdminLoginPage';
 import { RoleSelectionPage }    from './pages/login/RoleSelectionPage';
 import { DashboardPage as OwnerDashboardPage }      from './pages/owner/DashboardPage';
 import { DashboardPage as SuperAdminDashboardPage } from './pages/superadmin/DashboardPage';
@@ -17,21 +18,26 @@ import { ShieldCheck, Heart, Lock } from 'lucide-react';
 import {
   getAllListings, getBookingsByRenter,
   createBooking, createPaymentRecord, updateBookingStatus,
+  logoutUser,
 } from './lib/api';
 import { recordRental, releaseRental } from './lib/ownerProperties';
 
+// All valid public paths — anything NOT in this list shows 404
+const VALID_PATHS = new Set([
+  '/', '/admin', '/superadmin', '/owner', '/tenant',
+  '/dashboard', '/pricing', '/how-it-works', '/reviews',
+]);
+
 // ─── Route map ────────────────────────────────────────────────────────────────
-// Maps URL paths → internal tab names so typing /admin goes to the admin panel
-// and typing /owner goes to the owner dashboard etc.
 const PATH_MAP: Record<string, AppTab> = {
-  '/admin':      'super-admin',
-  '/superadmin': 'super-admin',
-  '/owner':      'owner-dashboard',
-  '/tenant':     'renter-dashboard',
-  '/dashboard':  'renter-dashboard',
-  '/pricing':    'pricing',
+  '/admin':        'super-admin',
+  '/superadmin':   'super-admin',
+  '/owner':        'owner-dashboard',
+  '/tenant':       'renter-dashboard',
+  '/dashboard':    'renter-dashboard',
+  '/pricing':      'pricing',
   '/how-it-works': 'how-it-works',
-  '/reviews':    'reviews',
+  '/reviews':      'reviews',
 };
 
 // Which roles may access which tabs
@@ -43,16 +49,41 @@ const TAB_ROLES: Partial<Record<AppTab, string[]>> = {
 
 type AppTab =
   | 'explore' | 'renter-dashboard' | 'auth' | 'super-admin'
-  | 'owner-dashboard' | 'role-selection' | 'pricing' | 'how-it-works' | 'reviews';
+  | 'owner-dashboard' | 'role-selection' | 'pricing' | 'how-it-works' | 'reviews'
+  | '404';
 
 function resolveStartTab(user: AppUser | null): AppTab {
   const path = window.location.pathname.toLowerCase();
-  const mapped = PATH_MAP[path];
-  if (!mapped) {
+
+  // Unknown path → 404 (not a fallback to home)
+  if (!VALID_PATHS.has(path)) return '404';
+
+  // Root → restore saved tab or go to explore
+  if (path === '/') {
     const saved = localStorage.getItem('currentTab') as AppTab | null;
     return saved ?? 'explore';
   }
-  return mapped; // role enforcement happens in render
+
+  return PATH_MAP[path] ?? 'explore';
+}
+
+// ── 404 page ──────────────────────────────────────────────────────────────────
+function NotFoundPage({ onGoHome }: { onGoHome: () => void }) {
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 text-white gap-6 p-8 text-center">
+      <p className="text-8xl font-black text-slate-700">404</p>
+      <h1 className="text-3xl font-extrabold text-white">Page Not Found</h1>
+      <p className="text-slate-400 max-w-sm">
+        The page you're looking for doesn't exist. Check the URL or go back to the home page.
+      </p>
+      <button
+        onClick={onGoHome}
+        className="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 rounded-2xl font-bold transition cursor-pointer"
+      >
+        Back to Home
+      </button>
+    </div>
+  );
 }
 
 // ── 403 screen shown when a user navigates to a tab they don't have access to
@@ -88,6 +119,18 @@ export default function App() {
   const [authMode,     setAuthMode]     = useState<'login' | 'signup'>('signup');
   const [selectedRole, setSelectedRole] = useState<'renter' | 'owner' | 'super-admin' | null>(null);
 
+  // Show 404 immediately — no further logic needed
+  if (currentTab === '404') {
+    return (
+      <NotFoundPage
+        onGoHome={() => {
+          window.history.replaceState({}, '', '/');
+          setCurrentTab('explore');
+        }}
+      />
+    );
+  }
+
   // Sync URL bar ↔ tab
   useEffect(() => {
     const map: Partial<Record<AppTab, string>> = {
@@ -120,6 +163,7 @@ export default function App() {
   const handleTabChange = (next: AppTab) => setCurrentTab(next);
 
   const handleLogout = () => {
+    logoutUser();
     localStorage.removeItem('currentUser');
     localStorage.removeItem('currentTab');
     setCurrentUser(null);
@@ -236,10 +280,19 @@ export default function App() {
         />
       );
     }
-    // Someone typed /admin or /owner while not logged in → redirect to login
-    if (currentTab === 'super-admin' || currentTab === 'owner-dashboard' || currentTab === 'renter-dashboard') {
+    // /admin → show dedicated admin login page (not access denied)
+    if (currentTab === 'super-admin') {
       return (
-        <AccessDenied onGoHome={() => { setCurrentTab('role-selection'); window.history.replaceState({}, '', '/'); }} />
+        <AdminLoginPage onLogin={handleAuthSuccess} />
+      );
+    }
+    // /owner or /tenant while not logged in → go to role selection
+    if (currentTab === 'owner-dashboard' || currentTab === 'renter-dashboard') {
+      return (
+        <RoleSelectionPage
+          onSelectRole={(role) => { setSelectedRole(role); handleTabChange('auth'); }}
+          onBack={() => handleTabChange('explore')}
+        />
       );
     }
     return (
@@ -247,7 +300,7 @@ export default function App() {
         onAuthSuccess={handleAuthSuccess}
         onLoginClick={() => { setAuthMode('login'); handleTabChange('role-selection'); }}
         onGetStartedClick={() => { setAuthMode('signup'); handleTabChange('role-selection'); }}
-        onAdminLoginClick={() => { setAuthMode('login'); setSelectedRole('super-admin'); handleTabChange('auth'); }}
+        onAdminLoginClick={() => handleTabChange('super-admin')}
         onPricingClick={() => handleTabChange('pricing')}
         onHowItWorksClick={() => handleTabChange('how-it-works')}
         onReviewsClick={() => handleTabChange('reviews')}

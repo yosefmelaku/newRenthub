@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { login, whoami }                                          from '../controllers/auth.controller';
+import { login, whoami, logout }                                  from '../controllers/auth.controller';
 import { getAllListings, createListing }                          from '../controllers/listings.controller';
 import { createBooking, getBookingsByRenter, updateBookingStatus } from '../controllers/bookings.controller';
 import { createPayment }                                          from '../controllers/payments.controller';
@@ -24,6 +24,7 @@ const router = Router();
 
 // ── Auth ─────────────────────────────────────────────────────────────────────
 router.post('/auth/login',   login);
+router.post('/auth/logout',  loadUserFromHeader, logout);
 router.get( '/auth/me',      loadUserFromHeader, whoami);
 
 // ── Users (public signup / phone login) ──────────────────────────────────────
@@ -53,7 +54,7 @@ router.patch('/maintenance/:id',     loadUserFromHeader, async (req, res) => {
   const { id }     = req.params;
   const { status } = req.body;
   try {
-    await prisma.maintenanceTicket.update({ where: { id }, data: { status: status as any } });
+    await prisma.maintenanceTicket.update({ where: { id: id as string }, data: { status: status as any } });
     res.json({ message: 'Status updated' });
   } catch (err) {
     console.error('[PATCH /maintenance/:id]', err);

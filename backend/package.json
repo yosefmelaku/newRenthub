@@ -5,7 +5,11 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev": "bun --watch index.ts"
+    "dev": "bun --watch index.ts",
+    "seed": "prisma db seed"
+  },
+  "prisma": {
+    "seed": "bun prisma/seed.ts"
   },
   "keywords": [],
   "author": "",
@@ -19,12 +23,14 @@
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
     "pg": "^8.22.0",
     "prisma": "^7.9.1"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^26.1.2",
     "@types/pg": "^8.20.4",
     "nodemon": "^3.1.14",

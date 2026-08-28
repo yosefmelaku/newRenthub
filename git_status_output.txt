@@ -1,0 +1,9 @@
+ M backend/package.json
+ M backend/prisma.config.ts
+ M backend/prisma/schema.prisma
+ M frontend/src/App.tsx
+ M prisma/schema.prisma
+?? backend/prisma/seed.ts
+?? frontend/src/pages/login/AdminLoginPage.tsx
+?? git_status_output.txt
+?? prisma_fix_walkthrough.md
