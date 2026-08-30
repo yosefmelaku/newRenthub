@@ -1,12 +1,22 @@
+import dotenv from 'dotenv';
+import path from 'path';
 import prisma from '../lib/prisma';
 import bcrypt from 'bcrypt';
+
+// Load environment variables from backend/.env
+dotenv.config({ path: path.join(__dirname, '../.env') });
 
 const SALT_ROUNDS = 12;
 
 async function main() {
-  const phone = '+251905728376';
-  const name = 'Yosef Melalaku';
-  const password = 'admin321';
+  const phone = process.env.SEED_ADMIN_PHONE || '+251905728376';
+  const name = process.env.SEED_ADMIN_NAME || 'Yosef Melalaku';
+  const password = process.env.SEED_ADMIN_PASSWORD;
+
+  if (!password) {
+    throw new Error('SEED_ADMIN_PASSWORD environment variable is missing. Please define it in your .env file.');
+  }
+
   // Derive email as expected by backend auth routes
   const derivedEmail = `${phone.trim().replace(/[^0-9]/g, '')}@phone.user`;
 

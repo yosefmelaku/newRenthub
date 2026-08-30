@@ -38,7 +38,9 @@ const globalForPrisma = globalThis as unknown as { prisma: PrismaClient };
 
 function createPrismaClient(): PrismaClient {
   // Create a pg connection pool using the DATABASE_URL from .env
-  // DATABASE_URL = postgresql://postgres:Yosef%401223@localhost:5432/rentalsystem
+  if (!process.env.DATABASE_URL) {
+    throw new Error('DATABASE_URL environment variable is missing.');
+  }
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
   });

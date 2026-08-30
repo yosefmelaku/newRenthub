@@ -3,7 +3,10 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import prisma from '../lib/prisma';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_renthub_key_2026_jwt_token_auth_sign_flow!';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is missing.');
+}
 
 /**
  * POST /api/auth/login

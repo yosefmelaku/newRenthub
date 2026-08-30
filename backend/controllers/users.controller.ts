@@ -43,7 +43,10 @@ import prisma from '../lib/prisma';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_renthub_key_2026_jwt_token_auth_sign_flow!';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is missing.');
+}
 
 /** bcrypt work factor — 12 rounds is a strong default for 2024+ hardware. */
 const SALT_ROUNDS = 12;
