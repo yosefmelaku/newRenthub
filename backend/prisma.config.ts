@@ -19,5 +19,8 @@ export default defineConfig({
       return new PrismaPg(pool);
     },
   },
+  migrations: {
+    seed: 'bun ./prisma/seed.ts',
+  },
 });
 

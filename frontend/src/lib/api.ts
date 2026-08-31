@@ -1,5 +1,49 @@
 import type { PropertyListing, Booking, PaymentRecord } from '../types';
 
+// ── Owner Property type (mirrors backend mapToClient output) ─────────────────
+export interface OwnerProperty {
+  id:             string;
+  title:          string;
+  type:           'house' | 'villa' | 'office' | 'studio';
+  city:           string;
+  subcity:        string;
+  address:        string;
+  monthlyRent:    number;
+  beds:           number;
+  baths:          number;
+  officeSqm:      number;
+  meetingRooms:   number;
+  parkingSpaces:  number;
+  imageUrl:       string | null;
+  totalUnits:     number;
+  rentedUnits:    number;
+  tenantUnitCount: number;
+  status:         'available' | 'applied' | 'rented';
+  validation:     string;
+  ownerId:        string;
+  createdAt:      string;
+}
+
+export interface CreatePropertyPayload {
+  ownerId:        string;
+  title:          string;
+  type:           'house' | 'villa' | 'office' | 'studio';
+  city:           string;
+  subcity?:       string;
+  address:        string;
+  monthlyRent:    number;
+  beds?:          number;
+  baths?:         number;
+  officeSqm?:     number;
+  meetingRooms?:  number;
+  parkingSpaces?: number;
+  totalUnits?:    number;
+  imageUrl?:      string | null;
+}
+
+export type UpdatePropertyPayload = Partial<CreatePropertyPayload>;
+
+
 const API = '/api';
 
 // ── Auth helper ───────────────────────────────────────────────────────────────
@@ -79,6 +123,27 @@ export async function createPaymentRecord(
     method: 'POST', headers: authHeaders(), body: JSON.stringify(payment),
   });
   return handleResponse<PaymentRecord>(res);
+}
+
+export async function createCheckoutSession(bookingId: string): Promise<{ sessionId: string; url: string; isSandbox: boolean }> {
+  const res = await fetch(`${API}/payments/checkout-session`, {
+    method: 'POST', headers: authHeaders(), body: JSON.stringify({ bookingId }),
+  });
+  return handleResponse<{ sessionId: string; url: string; isSandbox: boolean }>(res);
+}
+
+export async function verifySandboxPayment(bookingId: string, sessionId: string): Promise<{ success: boolean; message: string }> {
+  const res = await fetch(`${API}/payments/verify-sandbox`, {
+    method: 'POST', headers: authHeaders(), body: JSON.stringify({ bookingId, sessionId }),
+  });
+  return handleResponse<{ success: boolean; message: string }>(res);
+}
+
+export async function checkPaymentStatus(bookingId: string): Promise<{ bookingId: string; paymentStatus: string; status: string }> {
+  const res = await fetch(`${API}/payments/status/${encodeURIComponent(bookingId)}`, {
+    headers: authHeaders(),
+  });
+  return handleResponse<{ bookingId: string; paymentStatus: string; status: string }>(res);
 }
 
 // ── Admin — Dashboard Stats ───────────────────────────────────────────────────
@@ -204,3 +269,41 @@ export async function logoutUser(): Promise<void> {
     console.error('Backend logout failed', e);
   }
 }
+
+// ── Owner Properties CRUD ─────────────────────────────────────────────────────
+
+export async function fetchOwnerProperties(ownerId: string): Promise<{ count: number; bulkDiscountEligible: boolean; properties: OwnerProperty[] }> {
+  const res = await fetch(`${API}/properties/owner/${encodeURIComponent(ownerId)}`, {
+    headers: authHeaders(),
+  });
+  return handleResponse<{ count: number; bulkDiscountEligible: boolean; properties: OwnerProperty[] }>(res);
+}
+
+export async function createOwnerProperty(payload: CreatePropertyPayload): Promise<{ property: OwnerProperty }> {
+  const res = await fetch(`${API}/properties`, {
+    method: 'POST', headers: authHeaders(), body: JSON.stringify(payload),
+  });
+  return handleResponse<{ property: OwnerProperty }>(res);
+}
+
+export async function updateOwnerProperty(id: string, payload: UpdatePropertyPayload): Promise<{ property: OwnerProperty }> {
+  const res = await fetch(`${API}/properties/${encodeURIComponent(id)}`, {
+    method: 'PATCH', headers: authHeaders(), body: JSON.stringify(payload),
+  });
+  return handleResponse<{ property: OwnerProperty }>(res);
+}
+
+export async function deleteOwnerProperty(id: string, ownerId: string): Promise<void> {
+  const res = await fetch(`${API}/properties/${encodeURIComponent(id)}?ownerId=${encodeURIComponent(ownerId)}`, {
+    method: 'DELETE', headers: authHeaders(), body: JSON.stringify({ ownerId }),
+  });
+  await handleResponse<void>(res);
+}
+
+export async function recordPropertyRental(id: string, delta: 1 | -1): Promise<{ property: OwnerProperty }> {
+  const res = await fetch(`${API}/properties/${encodeURIComponent(id)}/rent`, {
+    method: 'PATCH', headers: authHeaders(), body: JSON.stringify({ delta }),
+  });
+  return handleResponse<{ property: OwnerProperty }>(res);
+}
+

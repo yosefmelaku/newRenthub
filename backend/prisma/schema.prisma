@@ -93,12 +93,17 @@ model Property {
   security_deposit Decimal?         @db.Decimal(12, 2)
   address          String
   city             String
+  subcity          String?
   image_url        String?          @map("image_url")
   validation       ValidationStatus @map("validation_status")
   bedrooms         Int?
   bathrooms        Int?
   meeting_rooms    Int?
+  office_sqm       Int?             @map("office_sqm")
+  parking_spaces   Int              @default(0) @map("parking_spaces")
   capacity         Int?
+  total_units      Int              @default(1) @map("total_units")
+  rented_units     Int              @default(0) @map("rented_units")
   owner_id         String           @db.Uuid @map("owner_id")
   owner            User             @relation("UserProperties", fields: [owner_id], references: [id], onDelete: Cascade)
   leases           Lease[]          @relation("PropertyLeases")

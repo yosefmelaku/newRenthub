@@ -1,34 +1,9 @@
 /**
  * properties.controller.ts
  *
- * Handles property registration and owner portfolio retrieval.
- *
- * ─── WHY PRISMA INSTEAD OF A CONNECTION POOL ────────────────────────────────
- * Old approach (raw SQL):
- *   import pool from '../database/db';
- *
- *   // Fetch owner portfolio
- *   const result = await pool.query(
- *     'SELECT * FROM public.properties WHERE owner_id = $1',
- *     [ownerId]
- *   );
- *   const properties = result.rows;
- *   // count check and discount logic had to be wired manually in JS afterward
- *
- * New approach (Prisma Client):
- *   import prisma from '../lib/prisma';
- *
- *   const properties = await prisma.property.findMany({
- *     where: { owner_id: ownerId },
- *     orderBy: { created_at: 'desc' },
- *   });
- *   // Bulk-discount logic is applied inline — no extra DB round-trip needed.
- *
- * Benefits:
- *   • `orderBy` is declarative — no ORDER BY string appended to SQL.
- *   • Prisma.Decimal handles monetary values safely (no float drift).
- *   • The `include` / `select` API replaces JOIN strings entirely.
- * ────────────────────────────────────────────────────────────────────────────
+ * Full CRUD for owner properties stored in PostgreSQL.
+ * Every operation is scoped to the authenticated owner's ID so
+ * owners can only read/mutate their own properties.
  */
 
 import { Request, Response } from 'express';
@@ -38,154 +13,209 @@ import { Prisma } from '@prisma/client';
 const ALLOWED_CATEGORIES = ['house', 'villa', 'office', 'studio'] as const;
 type PropertyCategoryInput = (typeof ALLOWED_CATEGORIES)[number];
 
-/**
- * POST /api/properties/register
- *
- * Registers a new property submitted by an owner.
- * Sets validation = 'PENDING' by default, pending superadmin approval.
- *
- * Old SQL equivalent:
- *   INSERT INTO public.properties
- *     (owner_id, title, description, address, city, rent_amount,
- *      category, bedrooms, bathrooms, image_url, validation)
- *   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'PENDING')
- *   RETURNING *
- *
- * Replaced by:
- *   prisma.property.create({ data: { ... } })
- *
- * Prisma handles the RETURNING clause automatically — the created record
- * is returned as a fully-typed object, no manual `result.rows[0]` needed.
- */
-export const registerProperty = async (req: Request, res: Response) => {
+// ─── helpers ─────────────────────────────────────────────────────────────────
+
+function toCategoryEnum(raw: string): string {
+  return raw.toUpperCase();
+}
+
+function mapToClient(p: any) {
+  return {
+    id:             p.id,
+    title:          p.title,
+    type:           p.category.toLowerCase() as 'house' | 'villa' | 'office' | 'studio',
+    city:           p.city,
+    subcity:        p.subcity ?? '',
+    address:        p.address,
+    monthlyRent:    Number(p.rent_amount),
+    beds:           p.bedrooms  ?? 0,
+    baths:          p.bathrooms ?? 1,
+    officeSqm:      p.office_sqm ?? 0,
+    meetingRooms:   p.meeting_rooms ?? 0,
+    parkingSpaces:  p.parking_spaces ?? 0,
+    imageUrl:       p.image_url ?? null,
+    totalUnits:     p.total_units  ?? 1,
+    rentedUnits:    p.rented_units ?? 0,
+    tenantUnitCount: p.total_units ?? 1,
+    status:         p.rented_units >= p.total_units ? 'rented' : 'available',
+    validation:     p.validation,
+    ownerId:        p.owner_id,
+    createdAt:      p.created_at,
+  };
+}
+
+// ─── CREATE  POST /api/properties ────────────────────────────────────────────
+
+export const createProperty = async (req: Request, res: Response) => {
   const {
-    ownerId,
-    ownerRole,
-    title,
-    description,
-    address,
-    city,
-    rent_amount,
-    category,
-    bedrooms,
-    bathrooms,
-    image_url,
+    ownerId, title, type, city, subcity, address,
+    monthlyRent, beds, baths, officeSqm, meetingRooms,
+    parkingSpaces, totalUnits, imageUrl,
   } = req.body;
 
-  if (ownerRole !== 'owner' && ownerRole !== 'OWNER') {
-    return res.status(403).json({
-      error: 'Forbidden',
-      message: 'Only users with the owner role can register properties.',
-    });
+  if (!ownerId || !title || !city || !address || !monthlyRent || !type) {
+    return res.status(400).json({ error: 'Missing required fields.' });
   }
 
-  if (!ownerId || typeof ownerId !== 'string' || ownerId.trim() === '') {
-    return res.status(400).json({ error: 'Validation failed', message: 'ownerId is required.' });
-  }
-  if (!title || typeof title !== 'string' || title.trim() === '') {
-    return res.status(400).json({ error: 'Validation failed', message: 'title is required.' });
-  }
-  if (!address || typeof address !== 'string' || address.trim() === '') {
-    return res.status(400).json({ error: 'Validation failed', message: 'address is required.' });
-  }
-  if (!city || typeof city !== 'string' || city.trim() === '') {
-    return res.status(400).json({ error: 'Validation failed', message: 'city is required.' });
-  }
-  if (rent_amount === undefined || isNaN(Number(rent_amount)) || Number(rent_amount) <= 0) {
-    return res.status(400).json({ error: 'Validation failed', message: 'rent_amount must be a positive number.' });
-  }
-  if (!ALLOWED_CATEGORIES.includes(category as PropertyCategoryInput)) {
-    return res.status(400).json({
-      error: 'Validation failed',
-      message: `category must be one of: ${ALLOWED_CATEGORIES.join(', ')}.`,
-    });
+  const cat = (type as string).toLowerCase();
+  if (!ALLOWED_CATEGORIES.includes(cat as PropertyCategoryInput)) {
+    return res.status(400).json({ error: `type must be one of: ${ALLOWED_CATEGORIES.join(', ')}.` });
   }
 
   try {
-    // prisma.property.create() replaces the INSERT ... RETURNING * pattern.
-    // Prisma.Decimal ensures rent_amount is stored with full decimal precision,
-    // avoiding the floating-point rounding issues that come with JS numbers.
     const property = await prisma.property.create({
       data: {
-        owner_id:    ownerId.trim(),
-        title:       title.trim(),
-        description: description?.trim() ?? '',
-        address:     address.trim(),
-        city:        city.trim(),
-        rent_amount: new Prisma.Decimal(Number(rent_amount)),
-        category:    (category as string).toUpperCase() as any,
-        bedrooms:    bedrooms  != null ? Number(bedrooms)  : null,
-        bathrooms:   bathrooms != null ? Number(bathrooms) : null,
-        image_url:   image_url?.trim() ?? null,
-        validation:  'PENDING',
+        owner_id:       ownerId,
+        title:          title.trim(),
+        city:           city.trim(),
+        subcity:        subcity?.trim() ?? null,
+        address:        address.trim(),
+        rent_amount:    new Prisma.Decimal(Number(monthlyRent)),
+        category:       toCategoryEnum(cat) as any,
+        bedrooms:       cat !== 'office' ? (Number(beds) || 1)  : null,
+        bathrooms:      Number(baths) || 1,
+        office_sqm:     cat === 'office' ? (Number(officeSqm) || null) : null,
+        meeting_rooms:  cat === 'office' ? (Number(meetingRooms) || 0)  : null,
+        parking_spaces: Number(parkingSpaces) || 0,
+        total_units:    Math.max(1, Number(totalUnits) || 1),
+        rented_units:   0,
+        image_url:      imageUrl?.trim() || null,
+        validation:     'PENDING',
       },
     });
 
-    return res.status(201).json({
-      message: 'Property submitted successfully and is pending admin approval.',
-      property,
-    });
-  } catch (error) {
-    console.error('[registerProperty] DB error:', error);
+    return res.status(201).json({ property: mapToClient(property) });
+  } catch (err) {
+    console.error('[createProperty]', err);
     return res.status(500).json({ error: 'Internal server error' });
   }
 };
 
-/**
- * GET /api/properties/owner/:ownerId
- *
- * Returns the full property portfolio for a given owner.
- *
- * Old SQL equivalent:
- *   SELECT * FROM public.properties
- *   WHERE owner_id = $1
- *   ORDER BY created_at DESC
- *
- * Replaced by:
- *   prisma.property.findMany({ where: { owner_id: ownerId }, orderBy: { created_at: 'desc' } })
- *
- * ─── BULK DISCOUNT LOGIC ────────────────────────────────────────────────────
- * After fetching all properties, we check if count > 1.
- * If true, every property in the response is tagged with:
- *   - bulkDiscountEligible: true
- *   - discountTag: 'BULK_PACKAGE_ACTIVE'
- *   - discountApplied: true  (on each property object)
- *
- * This replaces what previously would have required a separate
- * SELECT COUNT(*) query or a subquery join.
- * ────────────────────────────────────────────────────────────────────────────
- */
+// ─── LIST  GET /api/properties/owner/:ownerId ─────────────────────────────────
+
 export const getOwnerProperties = async (req: Request, res: Response) => {
   const { ownerId } = req.params;
 
-  if (!ownerId || ownerId.trim() === '') {
-    return res.status(400).json({ error: 'Validation failed', message: 'ownerId is required.' });
+  if (!ownerId) {
+    return res.status(400).json({ error: 'ownerId is required.' });
   }
 
   try {
-    // prisma.property.findMany() replaces:
-    //   pool.query('SELECT * FROM public.properties WHERE owner_id = $1', [ownerId])
-    // and returns a fully-typed Property[] array — no `result.rows` unwrapping.
     const properties = await prisma.property.findMany({
-      where:   { owner_id: ownerId.trim() },
+      where:   { owner_id: ownerId },
       orderBy: { created_at: 'desc' },
     });
 
-    // Bulk discount: if the owner has more than 1 property listed,
-    // apply the package discount tag dynamically — no extra DB query needed.
-    const hasBulkDiscount = properties.length > 1;
+    const mapped = properties.map(mapToClient);
+    const hasBulkDiscount = mapped.length > 1;
 
     return res.status(200).json({
-      count:               properties.length,
+      count:               mapped.length,
       bulkDiscountEligible: hasBulkDiscount,
-      discountTag:         hasBulkDiscount ? 'BULK_PACKAGE_ACTIVE' : null,
-      properties: properties.map((p) => ({
-        ...p,
-        discountApplied: hasBulkDiscount,
-      })),
+      properties:          mapped,
     });
-  } catch (error) {
-    console.error('[getOwnerProperties] DB error:', error);
+  } catch (err) {
+    console.error('[getOwnerProperties]', err);
     return res.status(500).json({ error: 'Internal server error' });
   }
 };
+
+// ─── UPDATE  PATCH /api/properties/:id ───────────────────────────────────────
+
+export const updateProperty = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const {
+    ownerId, title, type, city, subcity, address,
+    monthlyRent, beds, baths, officeSqm, meetingRooms,
+    parkingSpaces, totalUnits, imageUrl,
+  } = req.body;
+
+  try {
+    // Verify ownership before mutating
+    const existing = await prisma.property.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ error: 'Property not found.' });
+    }
+    if (existing.owner_id !== ownerId) {
+      return res.status(403).json({ error: 'Forbidden: you do not own this property.' });
+    }
+
+    const cat = type ? (type as string).toLowerCase() : existing.category.toLowerCase();
+
+    const updated = await prisma.property.update({
+      where: { id },
+      data: {
+        title:          title?.trim()         ?? existing.title,
+        city:           city?.trim()          ?? existing.city,
+        subcity:        subcity?.trim()       ?? existing.subcity,
+        address:        address?.trim()       ?? existing.address,
+        rent_amount:    monthlyRent != null ? new Prisma.Decimal(Number(monthlyRent)) : existing.rent_amount,
+        category:       toCategoryEnum(cat) as any,
+        bedrooms:       cat !== 'office' ? (beds != null ? Number(beds) : existing.bedrooms) : null,
+        bathrooms:      baths != null ? Number(baths) : existing.bathrooms,
+        office_sqm:     cat === 'office' ? (officeSqm != null ? Number(officeSqm) : existing.office_sqm) : null,
+        meeting_rooms:  cat === 'office' ? (meetingRooms != null ? Number(meetingRooms) : existing.meeting_rooms) : null,
+        parking_spaces: parkingSpaces != null ? Number(parkingSpaces) : existing.parking_spaces,
+        total_units:    totalUnits != null ? Math.max(1, Number(totalUnits)) : existing.total_units,
+        image_url:      imageUrl !== undefined ? (imageUrl?.trim() || null) : existing.image_url,
+      },
+    });
+
+    return res.status(200).json({ property: mapToClient(updated) });
+  } catch (err: any) {
+    if (err?.code === 'P2025') return res.status(404).json({ error: 'Property not found.' });
+    console.error('[updateProperty]', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+// ─── DELETE  DELETE /api/properties/:id ──────────────────────────────────────
+
+export const deleteProperty = async (req: Request, res: Response) => {
+  const { id }      = req.params;
+  const  ownerId    = req.body.ownerId || req.query.ownerId;
+
+  try {
+    const existing = await prisma.property.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ error: 'Property not found.' });
+    }
+    if (ownerId && existing.owner_id !== ownerId) {
+      return res.status(403).json({ error: 'Forbidden: you do not own this property.' });
+    }
+
+    await prisma.property.delete({ where: { id } });
+    return res.status(200).json({ message: 'Property deleted successfully.' });
+  } catch (err: any) {
+    if (err?.code === 'P2025') return res.status(404).json({ error: 'Property not found.' });
+    console.error('[deleteProperty]', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+// ─── RECORD RENTAL  PATCH /api/properties/:id/rent ───────────────────────────
+
+export const recordRentalOnProperty = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { delta = 1 } = req.body; // +1 to add a tenant, -1 to release
+
+  try {
+    const property = await prisma.property.findUnique({ where: { id } });
+    if (!property) return res.status(404).json({ error: 'Property not found.' });
+
+    const newRented = Math.max(0, Math.min(property.total_units, property.rented_units + Number(delta)));
+
+    const updated = await prisma.property.update({
+      where: { id },
+      data:  { rented_units: newRented },
+    });
+
+    return res.status(200).json({ property: mapToClient(updated) });
+  } catch (err) {
+    console.error('[recordRentalOnProperty]', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+// ─── Legacy: register via old route (kept for backward compat) ────────────────
+export const registerProperty = createProperty;

@@ -4,6 +4,10 @@ import { Navbar }                from './components/Navbar';
 import { BrowseRentalsPage }    from './components/BrowseRentalsPage';
 import { PropertyDetailsModal } from './components/PropertyDetailsModal';
 import { CheckoutPaymentModal } from './components/CheckoutPaymentModal';
+import { PaymentRedirectPage }  from './pages/tenant/PaymentRedirectPage';
+import { PaymentMethodsPage }  from './pages/tenant/PaymentMethodsPage';
+import { PaymentConfirmationPage } from './pages/tenant/PaymentConfirmationPage';
+import { PaymentSuccessPage } from './pages/tenant/PaymentSuccessPage';
 import { DashboardPage as RenterDashboardPage }     from './pages/tenant/DashboardPage';
 import { LoginPage }            from './pages/login/LoginPage';
 import { AdminLoginPage }       from './pages/login/AdminLoginPage';
@@ -26,18 +30,23 @@ import { recordRental, releaseRental } from './lib/ownerProperties';
 const VALID_PATHS = new Set([
   '/', '/admin', '/superadmin', '/owner', '/tenant',
   '/dashboard', '/pricing', '/how-it-works', '/reviews',
+  '/payment-redirect', '/payment-methods', '/payment-confirmation', '/payment-success',
 ]);
 
 // ─── Route map ────────────────────────────────────────────────────────────────
 const PATH_MAP: Record<string, AppTab> = {
-  '/admin':        'super-admin',
-  '/superadmin':   'super-admin',
-  '/owner':        'owner-dashboard',
-  '/tenant':       'renter-dashboard',
-  '/dashboard':    'renter-dashboard',
-  '/pricing':      'pricing',
-  '/how-it-works': 'how-it-works',
-  '/reviews':      'reviews',
+  '/admin':                '/admin',
+  '/superadmin':           'super-admin',
+  '/owner':                'owner-dashboard',
+  '/tenant':               'renter-dashboard',
+  '/dashboard':            'renter-dashboard',
+  '/pricing':              'pricing',
+  '/how-it-works':         'how-it-works',
+  '/reviews':              'reviews',
+  '/payment-redirect':     'payment-redirect',
+  '/payment-methods':      'payment-methods',
+  '/payment-confirmation': 'payment-confirmation',
+  '/payment-success':      'payment-success',
 };
 
 // Which roles may access which tabs
@@ -50,6 +59,7 @@ const TAB_ROLES: Partial<Record<AppTab, string[]>> = {
 type AppTab =
   | 'explore' | 'renter-dashboard' | 'auth' | 'super-admin'
   | 'owner-dashboard' | 'role-selection' | 'pricing' | 'how-it-works' | 'reviews'
+  | 'payment-redirect' | 'payment-methods' | 'payment-confirmation' | 'payment-success'
   | '404';
 
 function resolveStartTab(user: AppUser | null): AppTab {
@@ -193,6 +203,16 @@ export default function App() {
   const [checkoutDetails,  setCheckoutDetails]  = useState<{
     property: PropertyListing; startDate: string; endDate: string; nights: number; totalPrice: number;
   } | null>(null);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string | null>(null);
+  
+  // Rent payment context (separate from new booking flow)
+  const [rentPaymentContext, setRentPaymentContext] = useState<{
+    propertyTitle: string;
+    propertyLocation: string;
+    propertyImage: string;
+    amount: number;
+    dueDate: string;
+  } | null>(null);
 
   useEffect(() => {
     setLoadingListings(true);
@@ -226,6 +246,56 @@ export default function App() {
     const prop = selectedProperty;
     setSelectedProperty(null);
     setCheckoutDetails({ property: prop, ...s });
+    // Navigate to payment methods page
+    setCurrentTab('payment-methods');
+    window.history.replaceState({}, '', '/payment-methods');
+  };
+
+  const handleSelectPaymentMethod = (methodId: string) => {
+    setSelectedPaymentMethod(methodId);
+    setCurrentTab('payment-confirmation');
+    window.history.replaceState({}, '', '/payment-confirmation');
+  };
+
+  const handlePaymentComplete = async () => {
+    setCurrentTab('payment-success');
+    window.history.replaceState({}, '', '/payment-success');
+    await fetchBookings();
+  };
+
+  const handleGoToDashboard = () => {
+    setCheckoutDetails(null);
+    setRentPaymentContext(null);
+    setSelectedPaymentMethod(null);
+    setCurrentTab('renter-dashboard');
+    window.history.replaceState({}, '', '/tenant');
+  };
+
+  // Rent payment flow handlers
+  const handlePayRent = (details: {
+    propertyTitle: string;
+    propertyLocation: string;
+    propertyImage: string;
+    amount: number;
+    dueDate: string;
+  }) => {
+    setRentPaymentContext(details);
+    setCurrentTab('payment-methods');
+    window.history.replaceState({}, '', '/payment-methods');
+  };
+
+  const handleRentPaymentMethodSelect = (methodId: string) => {
+    setSelectedPaymentMethod(methodId);
+    setCurrentTab('payment-confirmation');
+    window.history.replaceState({}, '', '/payment-confirmation');
+  };
+
+  const handleRentPaymentComplete = async () => {
+    setCurrentTab('payment-success');
+    window.history.replaceState({}, '', '/payment-success');
+    setRentPaymentContext(null);
+    setSelectedPaymentMethod(null);
+    await fetchBookings();
   };
 
   const handlePaymentSuccess = async (details: { cardholderName: string; cardNumberMasked: string }) => {
@@ -246,6 +316,12 @@ export default function App() {
       });
     } catch (e) { console.error('Checkout API failed', e); }
     recordRental(listing.id, listing.totalUnits || listing.beds || 1);
+    setCheckoutDetails(null);
+    await fetchBookings();
+    setCurrentTab('renter-dashboard');
+  };
+
+  const handlePaymentFinish = async () => {
     setCheckoutDetails(null);
     await fetchBookings();
     setCurrentTab('renter-dashboard');
@@ -362,16 +438,93 @@ export default function App() {
                 onCancelBooking={handleCancelBooking} loading={loadingBookings}
                 onRefresh={fetchBookings} onBrowseMore={() => setCurrentTab('explore')}
                 onLogout={handleLogout} onUpdateUser={setCurrentUser}
+                onPayRent={handlePayRent}
               />
             </div>
           )}
           {currentTab === 'pricing'      && <div className="animate-fadeIn max-w-7xl mx-auto px-4 py-8"><PricingPage /></div>}
           {currentTab === 'how-it-works' && <div className="animate-fadeIn max-w-7xl mx-auto px-4 py-8"><HowItWorksPage /></div>}
           {currentTab === 'reviews'      && <div className="animate-fadeIn max-w-7xl mx-auto px-4 py-8"><ReviewsPage /></div>}
+          {currentTab === 'payment-redirect' && (
+            <div className="animate-fadeIn">
+              <PaymentRedirectPage onFinish={handlePaymentFinish} />
+            </div>
+          )}
+          {currentTab === 'payment-methods' && (checkoutDetails || rentPaymentContext) && (
+            <div className="animate-fadeIn">
+              <PaymentMethodsPage
+                bookingDetails={checkoutDetails ? {
+                  property: {
+                    id: checkoutDetails.property.id,
+                    title: checkoutDetails.property.title,
+                    image: checkoutDetails.property.image,
+                    location: checkoutDetails.property.location,
+                  },
+                  startDate: checkoutDetails.startDate,
+                  endDate: checkoutDetails.endDate,
+                  nights: checkoutDetails.nights,
+                  totalPrice: checkoutDetails.totalPrice,
+                } : undefined}
+                rentPaymentDetails={rentPaymentContext ? {
+                  propertyTitle: rentPaymentContext.propertyTitle,
+                  propertyLocation: rentPaymentContext.propertyLocation,
+                  propertyImage: rentPaymentContext.propertyImage,
+                  amount: rentPaymentContext.amount,
+                  dueDate: rentPaymentContext.dueDate,
+                } : undefined}
+                onBack={() => {
+                  if (rentPaymentContext) {
+                    setCurrentTab('renter-dashboard');
+                    window.history.replaceState({}, '', '/tenant');
+                  } else {
+                    setCurrentTab('explore');
+                    window.history.replaceState({}, '', '/');
+                  }
+                }}
+                onSelectMethod={rentPaymentContext ? handleRentPaymentMethodSelect : handleSelectPaymentMethod}
+              />
+            </div>
+          )}
+          {currentTab === 'payment-confirmation' && (checkoutDetails || rentPaymentContext) && selectedPaymentMethod && (
+            <div className="animate-fadeIn">
+              <PaymentConfirmationPage
+                bookingDetails={checkoutDetails ? {
+                  property: {
+                    id: checkoutDetails.property.id,
+                    title: checkoutDetails.property.title,
+                    image: checkoutDetails.property.image,
+                    location: checkoutDetails.property.location,
+                  },
+                  startDate: checkoutDetails.startDate,
+                  endDate: checkoutDetails.endDate,
+                  nights: checkoutDetails.nights,
+                  totalPrice: checkoutDetails.totalPrice,
+                } : undefined}
+                rentPaymentDetails={rentPaymentContext ? {
+                  propertyTitle: rentPaymentContext.propertyTitle,
+                  propertyLocation: rentPaymentContext.propertyLocation,
+                  propertyImage: rentPaymentContext.propertyImage,
+                  amount: rentPaymentContext.amount,
+                  dueDate: rentPaymentContext.dueDate,
+                } : undefined}
+                selectedPaymentMethod={selectedPaymentMethod}
+                onBack={() => {
+                  setCurrentTab('payment-methods');
+                  window.history.replaceState({}, '', '/payment-methods');
+                }}
+                onPaymentComplete={rentPaymentContext ? handleRentPaymentComplete : handlePaymentComplete}
+              />
+            </div>
+          )}
+          {currentTab === 'payment-success' && (
+            <div className="animate-fadeIn">
+              <PaymentSuccessPage onGoToDashboard={handleGoToDashboard} />
+            </div>
+          )}
         </main>
       )}
 
-      {!hideNavbar && currentTab !== 'renter-dashboard' && (
+      {!hideNavbar && currentTab !== 'renter-dashboard' && currentTab !== 'payment-methods' && currentTab !== 'payment-confirmation' && currentTab !== 'payment-success' && (
         <footer className="bg-white border-t border-gray-100 py-6 mt-auto">
           <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
             <div className="flex items-center space-x-2">

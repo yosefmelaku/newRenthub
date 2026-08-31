@@ -168,8 +168,20 @@ const TenantMaintenanceTab: React.FC<{ user: AppUser }> = ({ user }) => {
   const fetchRentedProperties = async () => {
     setLoadingProps(true);
     try {
+      // Get the authentication token from localStorage
+      const currentUserRaw = localStorage.getItem('currentUser');
+      const currentUser = currentUserRaw ? JSON.parse(currentUserRaw) : null;
+      const token = currentUser?.token || '';
+
+      // Prepare headers with authentication
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       const res = await fetch(
-        `${API_URL}/tenant/my-rented-properties?tenantId=${encodeURIComponent(user.email ?? '')}`
+        `${API_URL}/tenant/my-rented-properties?tenantId=${encodeURIComponent(user.email ?? '')}`,
+        { headers }
       );
       if (res.ok) {
         const data: RentedProperty[] = await res.json();
@@ -186,7 +198,18 @@ const TenantMaintenanceTab: React.FC<{ user: AppUser }> = ({ user }) => {
 
   const fetchMyRequests = async () => {
     try {
-      const res = await fetch(`${API_URL}/maintenance`);
+      // Get the authentication token from localStorage
+      const currentUserRaw = localStorage.getItem('currentUser');
+      const currentUser = currentUserRaw ? JSON.parse(currentUserRaw) : null;
+      const token = currentUser?.token || '';
+
+      // Prepare headers with authentication
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const res = await fetch(`${API_URL}/maintenance`, { headers });
       if (res.ok) setMyRequests(await res.json());
     } catch { /* silent */ }
   };
@@ -210,9 +233,23 @@ const TenantMaintenanceTab: React.FC<{ user: AppUser }> = ({ user }) => {
     setSubmitting(true);
 
     try {
+      // Get the authentication token from localStorage
+      const currentUserRaw = localStorage.getItem('currentUser');
+      const currentUser = currentUserRaw ? JSON.parse(currentUserRaw) : null;
+      const token = currentUser?.token || '';
+
+      // Prepare headers with authentication
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       const res = await fetch(`${API_URL}/maintenance/submit`, {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: headers,
         body: JSON.stringify({
           property_id:  propertyId,
           issue_title:  title.trim(),
@@ -598,7 +635,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               <div className="bg-white rounded-2xl border border-blue-50 p-6 shadow-sm border-l-4 border-l-blue-500">
                 <h4 className="font-bold text-blue-900 flex items-center gap-2"><CreditCard className="h-5 w-5"/> NEXT RENT DUE</h4>
                 <p className="text-blue-800 mt-2 font-semibold text-lg">$2,400.00 — Due in 5 Days</p>
-                <button className="bg-blue-600 hover:bg-blue-700 text-white w-full py-2 rounded-xl mt-4 font-semibold text-sm">Pay Now</button>
+                <button 
+                  onClick={() => setActiveTab('payments')}
+                  className="bg-blue-600 hover:bg-blue-700 text-white w-full py-2 rounded-xl mt-4 font-semibold text-sm transition-colors"
+                >
+                  Pay Now
+                </button>
               </div>
 
               {/* Maintenance Card */}
@@ -667,7 +709,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           <div className="animate-fadeIn space-y-6">
             <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm space-y-4">
               <h3 className="text-lg font-bold">Current Balance: $1,200</h3>
-              <button className="bg-emerald-600 text-white p-3 rounded-xl text-sm font-semibold w-full">Pay Rent Now (Stripe/PayPal)</button>
+              <button 
+                onClick={() => setActiveTab('payments')}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white p-3 rounded-xl text-sm font-semibold w-full transition-colors"
+              >
+                Pay Rent Now (Stripe/PayPal)
+              </button>
               <h4 className="text-md font-bold mt-4">Transaction History</h4>
               <div className="text-sm text-gray-600">Past Payments Table placeholder...</div>
             </div>
