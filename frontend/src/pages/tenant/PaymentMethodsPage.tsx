@@ -114,10 +114,15 @@ const getMethodIcon = (icon: string) => {
 
 export const PaymentMethodsPage: React.FC<PaymentMethodsPageProps> = ({
   bookingDetails,
+  rentPaymentDetails,
   onBack,
   onSelectMethod,
 }) => {
   const [selectedMethod, setSelectedMethod] = useState<string | null>(null);
+
+  // Determine if this is a rent payment or new booking
+  const isRentPayment = !!rentPaymentDetails;
+  const totalAmount = isRentPayment ? rentPaymentDetails.amount : bookingDetails?.totalPrice || 0;
 
   const handleContinue = () => {
     if (selectedMethod) {
@@ -135,37 +140,67 @@ export const PaymentMethodsPage: React.FC<PaymentMethodsPageProps> = ({
             className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4 transition-colors"
           >
             <ArrowLeft className="h-4 w-4" />
-            <span className="text-sm font-medium">Back to Property</span>
+            <span className="text-sm font-medium">
+              {isRentPayment ? 'Back to Dashboard' : 'Back to Property'}
+            </span>
           </button>
           
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Choose Payment Method</h1>
-          <p className="text-gray-600">Select how you'd like to pay for your rental</p>
+          <p className="text-gray-600">
+            {isRentPayment ? 'Select how you\'d like to pay your rent' : 'Select how you\'d like to pay for your rental'}
+          </p>
         </div>
 
-        {/* Booking Summary Card */}
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 mb-8">
-          <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">
-            Booking Summary
-          </h2>
-          <div className="flex gap-4">
-            <img
-              src={bookingDetails.property.image}
-              alt={bookingDetails.property.title}
-              className="w-24 h-20 object-cover rounded-xl border border-gray-200"
-            />
-            <div className="flex-1">
-              <h3 className="font-bold text-gray-900">{bookingDetails.property.title}</h3>
-              <p className="text-sm text-gray-500">{bookingDetails.property.location}</p>
-              <p className="text-xs text-emerald-600 mt-1">
-                {bookingDetails.startDate} to {bookingDetails.endDate} ({bookingDetails.nights} nights)
-              </p>
-            </div>
-            <div className="text-right">
-              <p className="text-sm text-gray-500">Total Amount</p>
-              <p className="text-2xl font-bold text-gray-900">${bookingDetails.totalPrice}</p>
+        {/* Summary Card - Different for rent payment vs new booking */}
+        {isRentPayment ? (
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 mb-8">
+            <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">
+              Rent Payment
+            </h2>
+            <div className="flex gap-4">
+              <img
+                src={rentPaymentDetails.propertyImage}
+                alt={rentPaymentDetails.propertyTitle}
+                className="w-24 h-20 object-cover rounded-xl border border-gray-200"
+              />
+              <div className="flex-1">
+                <h3 className="font-bold text-gray-900">{rentPaymentDetails.propertyTitle}</h3>
+                <p className="text-sm text-gray-500">{rentPaymentDetails.propertyLocation}</p>
+                <p className="text-xs text-rose-600 mt-1 font-semibold">
+                  Due: {rentPaymentDetails.dueDate}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-sm text-gray-500">Amount Due</p>
+                <p className="text-2xl font-bold text-gray-900">${rentPaymentDetails.amount}</p>
+              </div>
             </div>
           </div>
-        </div>
+        ) : bookingDetails ? (
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 mb-8">
+            <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">
+              Booking Summary
+            </h2>
+            <div className="flex gap-4">
+              <img
+                src={bookingDetails.property.image}
+                alt={bookingDetails.property.title}
+                className="w-24 h-20 object-cover rounded-xl border border-gray-200"
+              />
+              <div className="flex-1">
+                <h3 className="font-bold text-gray-900">{bookingDetails.property.title}</h3>
+                <p className="text-sm text-gray-500">{bookingDetails.property.location}</p>
+                <p className="text-xs text-emerald-600 mt-1">
+                  {bookingDetails.startDate} to {bookingDetails.endDate} ({bookingDetails.nights} nights)
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-sm text-gray-500">Total Amount</p>
+                <p className="text-2xl font-bold text-gray-900">${bookingDetails.totalPrice}</p>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {/* Payment Methods Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">

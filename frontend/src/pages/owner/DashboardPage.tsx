@@ -91,7 +91,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout }) 
           </div>
         );
       case 'my-properties':
-        return <MyPropertiesPage />;
+        return <MyPropertiesPage user={user} />;
       case 'accounting':
         return <AccountingPage />;
       case 'tax-reporting':

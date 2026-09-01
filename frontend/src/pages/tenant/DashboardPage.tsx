@@ -587,6 +587,13 @@ interface DashboardPageProps {
   onBrowseMore: () => void;
   onLogout: () => void;
   onUpdateUser: (user: AppUser) => void;
+  onPayRent: (details: {
+    propertyTitle: string;
+    propertyLocation: string;
+    propertyImage: string;
+    amount: number;
+    dueDate: string;
+  }) => void;
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({
@@ -594,6 +601,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   onLogout,
   onUpdateUser,
   onBrowseMore,
+  onPayRent,
 }) => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -636,7 +644,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 <h4 className="font-bold text-blue-900 flex items-center gap-2"><CreditCard className="h-5 w-5"/> NEXT RENT DUE</h4>
                 <p className="text-blue-800 mt-2 font-semibold text-lg">$2,400.00 — Due in 5 Days</p>
                 <button 
-                  onClick={() => setActiveTab('payments')}
+                  onClick={() => onPayRent({
+                    propertyTitle: 'Luxury Villa',
+                    propertyLocation: '123 Sunrise Valley Lane, Beverly Hills',
+                    propertyImage: '/villa.png',
+                    amount: 2400.00,
+                    dueDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                  })}
                   className="bg-blue-600 hover:bg-blue-700 text-white w-full py-2 rounded-xl mt-4 font-semibold text-sm transition-colors"
                 >
                   Pay Now
@@ -710,10 +724,16 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
             <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm space-y-4">
               <h3 className="text-lg font-bold">Current Balance: $1,200</h3>
               <button 
-                onClick={() => setActiveTab('payments')}
+                onClick={() => onPayRent({
+                  propertyTitle: 'Luxury Villa',
+                  propertyLocation: '123 Sunrise Valley Lane, Beverly Hills',
+                  propertyImage: '/villa.png',
+                  amount: 1200.00,
+                  dueDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                })}
                 className="bg-emerald-600 hover:bg-emerald-700 text-white p-3 rounded-xl text-sm font-semibold w-full transition-colors"
               >
-                Pay Rent Now (Stripe/PayPal)
+                Pay Rent Now
               </button>
               <h4 className="text-md font-bold mt-4">Transaction History</h4>
               <div className="text-sm text-gray-600">Past Payments Table placeholder...</div>

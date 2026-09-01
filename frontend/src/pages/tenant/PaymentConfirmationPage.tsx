@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 
 interface PaymentConfirmationPageProps {
-  bookingDetails: {
+  bookingDetails?: {
     property: {
       id: string;
       title: string;
@@ -23,6 +23,13 @@ interface PaymentConfirmationPageProps {
     endDate: string;
     nights: number;
     totalPrice: number;
+  };
+  rentPaymentDetails?: {
+    propertyTitle: string;
+    propertyLocation: string;
+    propertyImage: string;
+    amount: number;
+    dueDate: string;
   };
   selectedPaymentMethod: string;
   onBack: () => void;
@@ -47,12 +54,17 @@ const getPaymentIcon = (methodId: string) => {
 
 export const PaymentConfirmationPage: React.FC<PaymentConfirmationPageProps> = ({
   bookingDetails,
+  rentPaymentDetails,
   selectedPaymentMethod,
   onBack,
   onPaymentComplete,
 }) => {
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState('');
+
+  // Determine if this is a rent payment or new booking
+  const isRentPayment = !!rentPaymentDetails;
+  const totalAmount = isRentPayment ? rentPaymentDetails.amount : bookingDetails?.totalPrice || 0;
 
   const handleConfirmPayment = async () => {
     setProcessing(true);
@@ -66,57 +78,87 @@ export const PaymentConfirmationPage: React.FC<PaymentConfirmationPageProps> = (
         throw new Error('You must be logged in to complete payment');
       }
 
-      // Step 1: Create booking
-      const bookingResponse = await fetch('/api/bookings', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${currentUser.token}`,
-        },
-        body: JSON.stringify({
-          listingId: bookingDetails.property.id,
-          listingTitle: bookingDetails.property.title,
-          listingImage: bookingDetails.property.image,
-          listingLocation: bookingDetails.property.location,
-          renterId: currentUser.id,
-          renterName: currentUser.name,
-          startDate: bookingDetails.startDate,
-          endDate: bookingDetails.endDate,
-          totalPrice: bookingDetails.totalPrice,
-          nights: bookingDetails.nights,
-        }),
-      });
+      if (isRentPayment) {
+        // Rent payment flow - just record the payment
+        const paymentResponse = await fetch('/api/payments/confirm', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentUser.token}`,
+          },
+          body: JSON.stringify({
+            renterId: currentUser.id,
+            amount: rentPaymentDetails.amount,
+            paymentMethod: selectedPaymentMethod,
+            paymentType: 'rent',
+            propertyTitle: rentPaymentDetails.propertyTitle,
+          }),
+        });
 
-      if (!bookingResponse.ok) {
-        const errorData = await bookingResponse.json();
-        throw new Error(errorData.error || 'Failed to create booking');
+        if (!paymentResponse.ok) {
+          const errorData = await paymentResponse.json();
+          throw new Error(errorData.error || 'Payment processing failed');
+        }
+
+        // Success! Wait a moment then navigate
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        onPaymentComplete();
+
+      } else if (bookingDetails) {
+        // New booking flow
+        // Step 1: Create booking
+        const bookingResponse = await fetch('/api/bookings', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentUser.token}`,
+          },
+          body: JSON.stringify({
+            listingId: bookingDetails.property.id,
+            listingTitle: bookingDetails.property.title,
+            listingImage: bookingDetails.property.image,
+            listingLocation: bookingDetails.property.location,
+            renterId: currentUser.id,
+            renterName: currentUser.name,
+            startDate: bookingDetails.startDate,
+            endDate: bookingDetails.endDate,
+            totalPrice: bookingDetails.totalPrice,
+            nights: bookingDetails.nights,
+          }),
+        });
+
+        if (!bookingResponse.ok) {
+          const errorData = await bookingResponse.json();
+          throw new Error(errorData.error || 'Failed to create booking');
+        }
+
+        const booking = await bookingResponse.json();
+
+        // Step 2: Create payment record
+        const paymentResponse = await fetch('/api/payments/confirm', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentUser.token}`,
+          },
+          body: JSON.stringify({
+            bookingId: booking.id,
+            renterId: currentUser.id,
+            amount: bookingDetails.totalPrice,
+            paymentMethod: selectedPaymentMethod,
+            paymentType: 'booking',
+          }),
+        });
+
+        if (!paymentResponse.ok) {
+          const errorData = await paymentResponse.json();
+          throw new Error(errorData.error || 'Payment processing failed');
+        }
+
+        // Success! Wait a moment then navigate
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        onPaymentComplete();
       }
-
-      const booking = await bookingResponse.json();
-
-      // Step 2: Create payment record
-      const paymentResponse = await fetch('/api/payments/confirm', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${currentUser.token}`,
-        },
-        body: JSON.stringify({
-          bookingId: booking.id,
-          renterId: currentUser.id,
-          amount: bookingDetails.totalPrice,
-          paymentMethod: selectedPaymentMethod,
-        }),
-      });
-
-      if (!paymentResponse.ok) {
-        const errorData = await paymentResponse.json();
-        throw new Error(errorData.error || 'Payment processing failed');
-      }
-
-      // Success! Wait a moment then navigate
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      onPaymentComplete();
 
     } catch (err: any) {
       console.error('Payment error:', err);
@@ -140,39 +182,72 @@ export const PaymentConfirmationPage: React.FC<PaymentConfirmationPageProps> = (
           </button>
           
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Confirm Payment</h1>
-          <p className="text-gray-600">Review your booking details and complete payment</p>
+          <p className="text-gray-600">
+            {isRentPayment ? 'Review your rent payment and complete' : 'Review your booking details and complete payment'}
+          </p>
         </div>
 
-        {/* Property & Booking Details */}
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 mb-6">
-          <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">
-            Booking Details
-          </h2>
-          
-          <div className="flex gap-4 mb-6">
-            <img
-              src={bookingDetails.property.image}
-              alt={bookingDetails.property.title}
-              className="w-28 h-24 object-cover rounded-xl border border-gray-200"
-            />
-            <div className="flex-1">
-              <h3 className="font-bold text-gray-900 text-lg">{bookingDetails.property.title}</h3>
-              <p className="text-sm text-gray-500">{bookingDetails.property.location}</p>
-              <div className="mt-2 text-sm text-gray-600">
-                <p><span className="font-semibold">Check-in:</span> {bookingDetails.startDate}</p>
-                <p><span className="font-semibold">Check-out:</span> {bookingDetails.endDate}</p>
-                <p><span className="font-semibold">Duration:</span> {bookingDetails.nights} nights</p>
+        {/* Payment Details Card - Different for rent vs booking */}
+        {isRentPayment ? (
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 mb-6">
+            <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">
+              Rent Payment Details
+            </h2>
+            
+            <div className="flex gap-4 mb-6">
+              <img
+                src={rentPaymentDetails.propertyImage}
+                alt={rentPaymentDetails.propertyTitle}
+                className="w-28 h-24 object-cover rounded-xl border border-gray-200"
+              />
+              <div className="flex-1">
+                <h3 className="font-bold text-gray-900 text-lg">{rentPaymentDetails.propertyTitle}</h3>
+                <p className="text-sm text-gray-500">{rentPaymentDetails.propertyLocation}</p>
+                <div className="mt-2 text-sm text-gray-600">
+                  <p><span className="font-semibold">Due Date:</span> {rentPaymentDetails.dueDate}</p>
+                  <p><span className="font-semibold">Payment For:</span> Monthly Rent</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-gray-200 pt-4">
+              <div className="flex justify-between items-center">
+                <span className="text-gray-600 font-medium">Amount Due</span>
+                <span className="text-3xl font-bold text-gray-900">${rentPaymentDetails.amount}</span>
               </div>
             </div>
           </div>
+        ) : bookingDetails ? (
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 mb-6">
+            <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">
+              Booking Details
+            </h2>
+            
+            <div className="flex gap-4 mb-6">
+              <img
+                src={bookingDetails.property.image}
+                alt={bookingDetails.property.title}
+                className="w-28 h-24 object-cover rounded-xl border border-gray-200"
+              />
+              <div className="flex-1">
+                <h3 className="font-bold text-gray-900 text-lg">{bookingDetails.property.title}</h3>
+                <p className="text-sm text-gray-500">{bookingDetails.property.location}</p>
+                <div className="mt-2 text-sm text-gray-600">
+                  <p><span className="font-semibold">Check-in:</span> {bookingDetails.startDate}</p>
+                  <p><span className="font-semibold">Check-out:</span> {bookingDetails.endDate}</p>
+                  <p><span className="font-semibold">Duration:</span> {bookingDetails.nights} nights</p>
+                </div>
+              </div>
+            </div>
 
-          <div className="border-t border-gray-200 pt-4">
-            <div className="flex justify-between items-center">
-              <span className="text-gray-600 font-medium">Total Amount</span>
-              <span className="text-3xl font-bold text-gray-900">${bookingDetails.totalPrice}</span>
+            <div className="border-t border-gray-200 pt-4">
+              <div className="flex justify-between items-center">
+                <span className="text-gray-600 font-medium">Total Amount</span>
+                <span className="text-3xl font-bold text-gray-900">${bookingDetails.totalPrice}</span>
+              </div>
             </div>
           </div>
-        </div>
+        ) : null}
 
         {/* Payment Method */}
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 mb-6">
@@ -239,7 +314,7 @@ export const PaymentConfirmationPage: React.FC<PaymentConfirmationPageProps> = (
           ) : (
             <>
               <CheckCircle2 className="h-5 w-5" />
-              <span>Confirm & Pay ${bookingDetails.totalPrice}</span>
+              <span>Confirm & Pay ${totalAmount}</span>
             </>
           )}
         </button>
