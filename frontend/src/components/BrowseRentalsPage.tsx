@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import type { PropertyListing } from '../types';
 import { loadOwnerListings, applyAvailabilityToListings } from '../lib/ownerProperties';
+import { RentalApplicationModal } from './RentalApplicationModal';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Fallback mock listings — used only when BOTH API and localStorage are empty
@@ -329,6 +330,7 @@ interface BrowseRentalsPageProps {
   searchTerm: string;
   onSearchTermChange: (v: string) => void;
   onSelectProperty: (p: PropertyListing) => void;
+  currentUser?: { name: string; email: string } | null;
 }
 
 export const BrowseRentalsPage: React.FC<BrowseRentalsPageProps> = ({
@@ -336,9 +338,13 @@ export const BrowseRentalsPage: React.FC<BrowseRentalsPageProps> = ({
   searchTerm,
   onSearchTermChange,
   onSelectProperty,
+  currentUser,
 }) => {
   const [category, setCategory] = useState<Category>('all');
   const [budget,   setBudget]   = useState<BudgetKey>('all');
+  const [showApplicationModal, setShowApplicationModal] = useState(false);
+  const [selectedPropertyForApp, setSelectedPropertyForApp] = useState<PropertyListing | null>(null);
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
 
   // Re-read owner localStorage listings on every render so new posts show up
   // immediately without a page reload.
@@ -378,8 +384,55 @@ export const BrowseRentalsPage: React.FC<BrowseRentalsPageProps> = ({
     });
   }, [source, searchTerm, category, budgetMax]);
 
+  const handleApplyClick = (property: PropertyListing) => {
+    if (!currentUser) {
+      alert('Please log in to apply for properties');
+      return;
+    }
+    setSelectedPropertyForApp(property);
+    setShowApplicationModal(true);
+  };
+
+  const handleApplicationSuccess = () => {
+    setShowSuccessMessage(true);
+    setShowApplicationModal(false);
+    
+    // Hide success message after 5 seconds
+    setTimeout(() => {
+      setShowSuccessMessage(false);
+    }, 5000);
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 font-sans">
+
+      {/* Success Message Toast */}
+      {showSuccessMessage && (
+        <div className="fixed top-5 right-5 z-50 bg-emerald-600 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-3 animate-slideInRight">
+          <CheckCircle2 className="h-6 w-6" />
+          <div>
+            <p className="font-bold">Application Submitted Successfully!</p>
+            <p className="text-sm text-emerald-100">The property owner will review your application.</p>
+          </div>
+          <button
+            onClick={() => setShowSuccessMessage(false)}
+            className="ml-4 hover:bg-white/20 rounded-full p-1 transition"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Application Modal */}
+      {showApplicationModal && selectedPropertyForApp && currentUser && (
+        <RentalApplicationModal
+          property={selectedPropertyForApp}
+          onClose={() => setShowApplicationModal(false)}
+          onSubmitSuccess={handleApplicationSuccess}
+          userEmail={currentUser.email}
+          userName={currentUser.name}
+        />
+      )}
 
       {/* ── TOP FILTER BAR — no dark hero, filter chips right at the top ── */}
       <div className="sticky top-0 z-20 bg-white border-b border-slate-200 shadow-sm">
@@ -446,7 +499,7 @@ export const BrowseRentalsPage: React.FC<BrowseRentalsPageProps> = ({
         {filtered.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
             {filtered.map(p => (
-              <RentalCard key={p.id} property={p} onApply={onSelectProperty} />
+              <RentalCard key={p.id} property={p} onApply={handleApplyClick} />
             ))}
           </div>
         ) : (

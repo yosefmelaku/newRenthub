@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Check Authentication Token</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .box {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border: 2px solid #ddd;
+        }
+        .success { border-color: #10b981; background: #ecfdf5; }
+        .error { border-color: #ef4444; background: #fef2f2; }
+        .warning { border-color: #f59e0b; background: #fffbeb; }
+        h1 { color: #333; }
+        h2 { color: #666; margin-top: 0; }
+        pre {
+            background: #1f2937;
+            color: #10b981;
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+        button:hover { background: #2563eb; }
+        button.danger {
+            background: #ef4444;
+        }
+        button.danger:hover { background: #dc2626; }
+        .status { font-size: 24px; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <h1>🔐 RentHub Authentication Checker</h1>
+    
+    <div id="status-box" class="box">
+        <h2>Checking your login status...</h2>
+        <p>Please wait...</p>
+    </div>
+
+    <div id="token-box" class="box" style="display: none;">
+        <h2>Your Token Data</h2>
+        <pre id="token-data"></pre>
+    </div>
+
+    <div id="actions-box" class="box">
+        <h2>Actions</h2>
+        <button onclick="checkAgain()">🔄 Check Again</button>
+        <button onclick="clearAndReload()" class="danger">🗑️ Clear Storage & Reload</button>
+        <button onclick="testAPI()">🧪 Test API Call</button>
+    </div>
+
+    <div id="test-result" class="box" style="display: none;">
+        <h2>API Test Result</h2>
+        <pre id="test-output"></pre>
+    </div>
+
+    <script>
+        function checkStatus() {
+            const statusBox = document.getElementById('status-box');
+            const tokenBox = document.getElementById('token-box');
+            const tokenData = document.getElementById('token-data');
+
+            try {
+                const raw = localStorage.getItem('currentUser');
+                
+                if (!raw) {
+                    statusBox.className = 'box error';
+                    statusBox.innerHTML = `
+                        <div class="status">❌</div>
+                        <h2>NOT LOGGED IN</h2>
+                        <p><strong>Problem:</strong> No user data found in localStorage</p>
+                        <p><strong>Solution:</strong> You need to login first</p>
+                        <ol>
+                            <li>Go to your app (localhost:5173 or localhost:3001)</li>
+                            <li>Click Login</li>
+                            <li>Enter your credentials</li>
+                            <li>Come back to this page and click "Check Again"</li>
+                        </ol>
+                    `;
+                    tokenBox.style.display = 'none';
+                    return;
+                }
+
+                const user = JSON.parse(raw);
+                
+                // Check if token exists
+                if (!user.token) {
+                    statusBox.className = 'box error';
+                    statusBox.innerHTML = `
+                        <div class="status">❌</div>
+                        <h2>TOKEN MISSING</h2>
+                        <p><strong>Problem:</strong> You're logged in but have no authentication token</p>
+                        <p><strong>User:</strong> ${user.name || 'Unknown'}</p>
+                        <p><strong>Role:</strong> ${user.role || 'Unknown'}</p>
+                        <p><strong>Solution:</strong></p>
+                        <ol>
+                            <li>Click "Clear Storage & Reload" button below</li>
+                            <li>Login again</li>
+                            <li>Come back and check again</li>
+                        </ol>
+                    `;
+                } else {
+                    statusBox.className = 'box success';
+                    statusBox.innerHTML = `
+                        <div class="status">✅</div>
+                        <h2>LOGGED IN SUCCESSFULLY</h2>
+                        <p><strong>Name:</strong> ${user.name}</p>
+                        <p><strong>Email:</strong> ${user.email || 'N/A'}</p>
+                        <p><strong>Phone:</strong> ${user.phone || 'N/A'}</p>
+                        <p><strong>Role:</strong> ${user.role}</p>
+                        <p><strong>Token:</strong> ✅ Present (${user.token.length} characters)</p>
+                        <p><strong>Token Preview:</strong> ${user.token.substring(0, 50)}...</p>
+                    `;
+                }
+
+                // Show full token data
+                tokenBox.style.display = 'block';
+                tokenData.textContent = JSON.stringify(user, null, 2);
+
+            } catch (err) {
+                statusBox.className = 'box error';
+                statusBox.innerHTML = `
+                    <div class="status">❌</div>
+                    <h2>ERROR READING DATA</h2>
+                    <p><strong>Error:</strong> ${err.message}</p>
+                    <p><strong>Solution:</strong> Click "Clear Storage & Reload" below</p>
+                `;
+                tokenBox.style.display = 'none';
+            }
+        }
+
+        function checkAgain() {
+            checkStatus();
+        }
+
+        function clearAndReload() {
+            if (confirm('This will clear all stored data and reload the page. Continue?')) {
+                localStorage.clear();
+                sessionStorage.clear();
+                alert('Storage cleared! Page will reload.');
+                location.reload();
+            }
+        }
+
+        async function testAPI() {
+            const testResult = document.getElementById('test-result');
+            const testOutput = document.getElementById('test-output');
+            
+            testResult.style.display = 'block';
+            testOutput.textContent = 'Testing API call...\n\n';
+
+            try {
+                const raw = localStorage.getItem('currentUser');
+                if (!raw) {
+                    testOutput.textContent = '❌ Cannot test: Not logged in';
+                    return;
+                }
+
+                const user = JSON.parse(raw);
+                if (!user.token) {
+                    testOutput.textContent = '❌ Cannot test: No token found';
+                    return;
+                }
+
+                testOutput.textContent += `Making request to: /api/properties/owner/${user.id}\n`;
+                testOutput.textContent += `Using token: ${user.token.substring(0, 30)}...\n\n`;
+
+                const res = await fetch(`/api/properties/owner/${user.id}`, {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${user.token}`
+                    }
+                });
+
+                testOutput.textContent += `Response status: ${res.status}\n`;
+                testOutput.textContent += `Response ok: ${res.ok}\n\n`;
+
+                const data = await res.json();
+                
+                if (res.ok) {
+                    testOutput.textContent += '✅ SUCCESS!\n\n';
+                    testOutput.textContent += JSON.stringify(data, null, 2);
+                } else {
+                    testOutput.textContent += '❌ FAILED!\n\n';
+                    testOutput.textContent += JSON.stringify(data, null, 2);
+                    testOutput.textContent += '\n\n💡 Solution:\n';
+                    testOutput.textContent += '1. Click "Clear Storage & Reload"\n';
+                    testOutput.textContent += '2. Login again\n';
+                    testOutput.textContent += '3. Try submitting maintenance request again';
+                }
+
+            } catch (err) {
+                testOutput.textContent += `\n❌ Error: ${err.message}`;
+            }
+        }
+
+        // Run check on page load
+        checkStatus();
+    </script>
+</body>
+</html>

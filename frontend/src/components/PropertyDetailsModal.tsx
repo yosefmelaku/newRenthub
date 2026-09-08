@@ -296,31 +296,56 @@ export const PropertyDetailsModal: React.FC<PropertyDetailsModalProps> = ({
             )}
           </div>
 
-          {/* Secure Book button & badges */}
+          {/* Secure Apply/Book button & badges */}
           <div className="pt-6 border-t border-gray-200/60 mt-6 space-y-3">
             {!canBook && (
               <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-100 p-3 rounded-xl">
                 <AlertCircle className="h-4 w-4 shrink-0" />
                 <span>
                   {availability === 'applied'
-                    ? 'This property already has a pending application.'
-                    : 'This property is no longer available for booking.'}
+                    ? 'You have already applied for this property.'
+                    : 'This property is fully rented and not available.'}
                 </span>
               </div>
             )}
+            
+            {/* Main Action Button */}
             <button
               id="initiate-booking-btn"
               onClick={handleBookClick}
               disabled={nights <= 0 || !canBook}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white font-sans font-bold py-3.5 px-4 rounded-xl shadow-md cursor-pointer transition-colors text-center text-sm flex items-center justify-center space-x-2"
+              className={`w-full font-sans font-bold py-4 px-4 rounded-xl shadow-lg cursor-pointer transition-all text-center text-base flex items-center justify-center space-x-2
+                ${canBook
+                  ? 'bg-emerald-600 hover:bg-emerald-700 hover:shadow-xl text-white'
+                  : 'bg-gray-300 cursor-not-allowed text-gray-500'}`}
             >
-              <Sparkles className="h-4 w-4" />
-              <span>{canBook ? 'Book with Instant Pay' : 'Not Available'}</span>
+              {canBook ? (
+                <>
+                  <Sparkles className="h-5 w-5" />
+                  <span>Apply to Rent This Property</span>
+                </>
+              ) : (
+                <span>{availability === 'applied' ? 'Application Submitted' : 'Not Available'}</span>
+              )}
             </button>
+
+            {/* Availability Status Badge */}
+            <div className={`text-center py-2 px-3 rounded-lg text-xs font-bold
+              ${canBook
+                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                : availability === 'applied'
+                  ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                  : 'bg-gray-100 text-gray-600 border border-gray-200'}`}>
+              {canBook
+                ? '✅ Available Now - Ready to Apply'
+                : availability === 'applied'
+                  ? '⏳ Your Application is Pending Review'
+                  : '❌ Fully Rented - No Units Available'}
+            </div>
 
             <div className="flex items-center justify-center gap-1.5 text-[10px] text-gray-500 font-mono">
               <ShieldCheck className="h-4 w-4 text-emerald-600" />
-              <span>Secure Booking Process &bull; 256-bit Encryption</span>
+              <span>Secure Application Process &bull; 256-bit Encryption</span>
             </div>
           </div>
         </div>

@@ -5,8 +5,8 @@
  * 
  * Credentials:
  *   Name: Yosef Melalaku
- *   Phone: +241905728376
- *   Password: admin321
+ *   Phone: +251905728376
+ *   Password: admin@321
  * 
  * Run with: bun run seed (or npx prisma db seed)
  */
@@ -25,7 +25,7 @@ async function main() {
   // Default SUPER_ADMIN credentials as specified
   const phone = '+251905728376';
   const name = 'Yosef Melalaku';
-  const password = 'admin321';
+  const password = 'admin@321';
 
   // Derive email as expected by backend auth routes
   // Auth controller uses phone.replace(/[^0-9]/g, '') + '@phone.user'

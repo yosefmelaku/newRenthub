@@ -52,6 +52,7 @@ const API = '/api';
 const authHeaders = (): Record<string, string> => {
   const raw   = typeof window !== 'undefined' ? localStorage.getItem('currentUser') : null;
   const token = raw ? JSON.parse(raw).token ?? '' : '';
+  
   return {
     'Content-Type':  'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),

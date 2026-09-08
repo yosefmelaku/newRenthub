@@ -16,6 +16,7 @@ import {
   getAllProperties,
   getRentalsMatrix,
 } from '../controllers/admin.controller';
+import { submitApplication, getOwnerApplications, getTenantApplications, updateApplicationStatus } from '../controllers/applications.controller';
 import { loadUserFromHeader, requireSuperadmin } from '../middleware/auth.middleware';
 import { signContract }                          from '../controllers/esign.controller';
 import prisma                                    from '../lib/prisma';
@@ -103,6 +104,12 @@ router.post('/leases/create', loadUserFromHeader, validate(createLeaseSchema), c
 
 // ── E-Sign ────────────────────────────────────────────────────────────────────
 router.post('/esign/sign-contract', loadUserFromHeader, signContract);
+
+// ── Applications ──────────────────────────────────────────────────────────────
+router.post(  '/applications/submit',          loadUserFromHeader, submitApplication);
+router.get(   '/applications/owner/:ownerId',  loadUserFromHeader, getOwnerApplications);
+router.get(   '/applications/tenant/:tenantId',loadUserFromHeader, getTenantApplications);
+router.patch( '/applications/:id/status',      loadUserFromHeader, updateApplicationStatus);
 
 // ── Admin — SUPERADMIN only ───────────────────────────────────────────────────
 const admin = Router();

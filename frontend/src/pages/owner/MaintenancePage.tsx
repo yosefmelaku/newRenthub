@@ -1,6 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { PlusCircle, Wrench, Clock, CheckCircle2, ChevronLeft } from 'lucide-react';
 
+// Helper to get auth headers
+const getAuthHeaders = (): HeadersInit => {
+  try {
+    const raw = localStorage.getItem('currentUser');
+    if (!raw) return { 'Content-Type': 'application/json' };
+    const user = JSON.parse(raw);
+    const token = user.token || '';
+    return {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    };
+  } catch {
+    return { 'Content-Type': 'application/json' };
+  }
+};
+
 // --- Types ---
 type Status = 'NEW' | 'IN_PROGRESS' | 'COMPLETED';
 
@@ -29,7 +45,9 @@ export const MaintenancePage: React.FC = () => {
 
   const fetchRequests = async () => {
     try {
-      const response = await fetch(`${API_URL}/maintenance`);
+      const response = await fetch(`${API_URL}/maintenance`, {
+        headers: getAuthHeaders(),
+      });
       if (response.ok) {
         const data = await response.json();
         setRequests(data);
@@ -44,7 +62,7 @@ export const MaintenancePage: React.FC = () => {
     try {
       const response = await fetch(`${API_URL}/maintenance`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify(newReq)
       });
       if (response.ok) {
@@ -61,7 +79,7 @@ export const MaintenancePage: React.FC = () => {
     try {
       const response = await fetch(`${API_URL}/maintenance/${id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ status: newStatus })
       });
       if (response.ok) {

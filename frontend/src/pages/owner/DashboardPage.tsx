@@ -25,6 +25,36 @@ import { MaintenancePage } from './MaintenancePage';
 import { MyPropertiesPage } from './MyPropertiesPage';
 import type { AppUser } from '../../types';
 
+// Helper to get auth headers
+const getAuthHeaders = (): HeadersInit => {
+  try {
+    const raw = localStorage.getItem('currentUser');
+    console.log('🔍 [getAuthHeaders] Raw localStorage:', raw);
+    
+    if (!raw) {
+      console.error('❌ [getAuthHeaders] No currentUser in localStorage');
+      return { 'Content-Type': 'application/json' };
+    }
+    
+    const user = JSON.parse(raw);
+    console.log('🔍 [getAuthHeaders] Parsed user:', user);
+    
+    const token = user.token || '';
+    console.log('🔍 [getAuthHeaders] Token exists:', !!token, token ? `(${token.substring(0, 30)}...)` : '');
+    
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    };
+    
+    console.log('🔍 [getAuthHeaders] Final headers:', headers);
+    return headers;
+  } catch (err) {
+    console.error('❌ [getAuthHeaders] Error:', err);
+    return { 'Content-Type': 'application/json' };
+  }
+};
+
 interface DashboardPageProps {
   user: AppUser;
   onLogout: () => void;
@@ -37,11 +67,19 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ user, onLogout }) 
   const [showDropdown, setShowDropdown] = useState(false);
   const [newRequestCount, setNewRequestCount] = useState(0);
 
+  // Debug: Log user on mount
+  useEffect(() => {
+    console.log('🔍 [OwnerDashboard] User prop:', user);
+    console.log('🔍 [OwnerDashboard] localStorage:', localStorage.getItem('currentUser'));
+  }, [user]);
+
   // Poll for new maintenance requests every 30 seconds
   useEffect(() => {
     const fetchCount = async () => {
       try {
-        const res = await fetch('/api/maintenance');
+        const res = await fetch('/api/maintenance', {
+          headers: getAuthHeaders(),
+        });
         if (res.ok) {
           const data: { status: string }[] = await res.json();
           setNewRequestCount(data.filter(r => r.status === 'pending' || r.status === 'NEW').length);

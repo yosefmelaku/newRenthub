@@ -64,17 +64,32 @@ type AppTab =
 
 function resolveStartTab(user: AppUser | null): AppTab {
   const path = window.location.pathname.toLowerCase();
+  
+  console.log('🔍 [resolveStartTab] URL path:', path);
+  console.log('🔍 [resolveStartTab] User:', user ? user.role : 'not logged in');
 
   // Unknown path → 404 (not a fallback to home)
-  if (!VALID_PATHS.has(path)) return '404';
+  if (!VALID_PATHS.has(path)) {
+    console.log('❌ [resolveStartTab] Path not in VALID_PATHS, returning 404');
+    return '404';
+  }
+
+  // Admin routes - ALWAYS honor the URL, ignore localStorage
+  if (path === '/admin' || path === '/superadmin') {
+    console.log('✅ [resolveStartTab] Admin path detected, returning super-admin');
+    return 'super-admin';
+  }
 
   // Root → restore saved tab or go to explore
   if (path === '/') {
     const saved = localStorage.getItem('currentTab') as AppTab | null;
+    console.log('🔍 [resolveStartTab] Root path, saved tab:', saved);
     return saved ?? 'explore';
   }
 
-  return PATH_MAP[path] ?? 'explore';
+  const resolved = PATH_MAP[path] ?? 'explore';
+  console.log('🔍 [resolveStartTab] Resolved tab:', resolved);
+  return resolved;
 }
 
 // ── 404 page ──────────────────────────────────────────────────────────────────
@@ -180,6 +195,52 @@ export default function App() {
     setCurrentTab('explore');
     window.history.replaceState({}, '', '/');
   };
+
+  // ── Special case: Admin access while logged in as non-admin ────────────
+  // If user tries to access admin panel while logged in as tenant/owner,
+  // show a "Switch Account" screen to login as admin
+  if (currentUser && currentTab === 'super-admin') {
+    const userRole = String(currentUser.role).toLowerCase();
+    if (userRole !== 'superadmin') {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-slate-950 px-4">
+          <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-8 shadow-2xl max-w-md w-full text-center space-y-6">
+            <div className="flex flex-col items-center gap-3">
+              <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-2xl">
+                <Lock className="h-10 w-10 text-amber-400" />
+              </div>
+              <h2 className="text-2xl font-bold text-white">Admin Access Required</h2>
+            </div>
+            <p className="text-slate-400 text-sm leading-relaxed">
+              You're currently logged in as <strong className="text-white">{currentUser.name}</strong> ({currentUser.role}).
+              <br /><br />
+              To access the Admin Panel, you need to logout and sign in with Super Admin credentials.
+            </p>
+            <div className="space-y-3">
+              <button
+                onClick={() => {
+                  handleLogout();
+                  // After logout, it will automatically show AdminLoginPage
+                }}
+                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl transition"
+              >
+                Logout & Sign In as Admin
+              </button>
+              <button
+                onClick={() => {
+                  setCurrentTab('explore');
+                  window.history.replaceState({}, '', '/');
+                }}
+                className="w-full border border-slate-700 text-slate-300 hover:text-white hover:border-slate-600 font-semibold py-3 rounded-xl transition"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+  }
 
   // ── Role guard ───────────────────────────────────────────────────────────
   // If a logged-in user navigates to a tab they don't have access to, show 403
@@ -338,6 +399,8 @@ export default function App() {
 
   // ── Unauthenticated routes ────────────────────────────────────────────────
   if (!currentUser) {
+    console.log('🔍 [App] Not logged in. currentTab:', currentTab);
+    
     if (currentTab === 'role-selection') {
       return (
         <RoleSelectionPage
@@ -358,6 +421,7 @@ export default function App() {
     }
     // /admin → show dedicated admin login page (not access denied)
     if (currentTab === 'super-admin') {
+      console.log('✅ [App] Showing AdminLoginPage');
       return (
         <AdminLoginPage onLogin={handleAuthSuccess} />
       );
@@ -371,6 +435,7 @@ export default function App() {
         />
       );
     }
+    console.log('🔍 [App] Showing LandingPage (default)');
     return (
       <LandingPage
         onAuthSuccess={handleAuthSuccess}
@@ -427,6 +492,7 @@ export default function App() {
                   listings={listings} searchTerm={globalSearchTerm}
                   onSearchTermChange={setGlobalSearchTerm}
                   onSelectProperty={(p) => setSelectedProperty(p)}
+                  currentUser={currentUser}
                 />
               )}
             </div>

@@ -253,3 +253,38 @@ model EsignAuditLog {
   @@map("esign_audit_log")
   @@index([document_id])
 }
+
+model RentalApplication {
+  id                       String   @id @default(uuid()) @db.Uuid
+  property_id              String   @db.Uuid @map("property_id")
+  property_title           String   @map("property_title")
+  property_location        String   @map("property_location")
+  monthly_rent             Decimal  @db.Decimal(12, 2) @map("monthly_rent")
+  owner_id                 String   @db.Uuid @map("owner_id")
+  applicant_id             String   @db.Uuid @map("applicant_id")
+  applicant_name           String   @map("applicant_name")
+  applicant_email          String   @map("applicant_email")
+  full_name                String   @map("full_name")
+  email                    String
+  phone                    String
+  occupation               String
+  employer                 String?
+  monthly_income           String   @map("monthly_income")
+  number_of_occupants      String   @map("number_of_occupants")
+  move_in_date             DateTime @map("move_in_date")
+  previous_address         String?  @map("previous_address")
+  reason_for_moving        String?  @map("reason_for_moving")
+  has_pets                 String   @map("has_pets")
+  pet_details              String?  @map("pet_details")
+  emergency_contact_name   String   @map("emergency_contact_name")
+  emergency_contact_phone  String   @map("emergency_contact_phone")
+  additional_notes         String?  @map("additional_notes")
+  status                   String   @default("pending")
+  submitted_at             DateTime @default(now()) @map("submitted_at")
+  reviewed_at              DateTime? @map("reviewed_at")
+
+  @@map("rental_applications")
+  @@index([property_id])
+  @@index([owner_id])
+  @@index([applicant_id])
+}

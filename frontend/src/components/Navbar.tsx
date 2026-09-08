@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Home, ShieldAlert, KeyRound, LogOut, Search, Building2, Settings, HelpCircle, ChevronDown } from 'lucide-react';
 import type { AppUser } from '../types';
+import { AccountSwitcher } from './AccountSwitcher';
 
 
 interface NavbarProps {
@@ -138,33 +139,11 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             <div className="hidden md:flex items-center gap-3">
               {currentUser ? (
-                <div className="relative">
-                  <button
-                    onClick={() => setShowProfileMenu(!showProfileMenu)}
-                    className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-50 hover:bg-gray-100 transition cursor-pointer border border-gray-100"
-                  >
-                    <div className="w-7 h-7 bg-emerald-600 rounded-full flex items-center justify-center font-bold text-white text-xs">
-                        {currentUser.name.substring(0, 1).toUpperCase()}
-                    </div>
-                    <span className="text-xs font-semibold text-gray-800">{currentUser.email}</span>
-                    <ChevronDown className="h-4 w-4 text-gray-400" />
-                  </button>
-                  
-                  {showProfileMenu && (
-                    <div className="absolute right-0 top-full mt-2 w-56 bg-white border border-gray-100 rounded-xl shadow-lg py-1 z-50">
-                      <div className="px-4 py-2 text-xs font-medium text-gray-500 border-b border-gray-50">{currentUser.email}</div>
-                      <button className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">
-                        <Settings className="h-4 w-4" /> Account settings
-                      </button>
-                      <button className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">
-                        <HelpCircle className="h-4 w-4" /> Help
-                      </button>
-                      <button onClick={onLogout} className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-rose-600 hover:bg-rose-50">
-                        <LogOut className="h-4 w-4" /> Logout
-                      </button>
-                    </div>
-                  )}
-                </div>
+                <AccountSwitcher
+                  currentUser={currentUser}
+                  onSwitchAccount={() => {}} // Handled internally by AccountSwitcher
+                  onLogout={onLogout}
+                />
               ) : (
                 <button
                   type="button"

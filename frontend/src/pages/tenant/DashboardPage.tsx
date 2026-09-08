@@ -10,6 +10,22 @@ import { TenantSidebar, TENANT_NAV_ITEMS } from '../../components/TenantSidebar'
 
 const API_URL = '/api';
 
+// Helper to get auth headers consistently
+const getAuthHeaders = (): HeadersInit => {
+  try {
+    const raw = localStorage.getItem('currentUser');
+    if (!raw) return { 'Content-Type': 'application/json' };
+    const user = JSON.parse(raw);
+    const token = user.token || '';
+    return {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    };
+  } catch {
+    return { 'Content-Type': 'application/json' };
+  }
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────────────────────
@@ -168,20 +184,9 @@ const TenantMaintenanceTab: React.FC<{ user: AppUser }> = ({ user }) => {
   const fetchRentedProperties = async () => {
     setLoadingProps(true);
     try {
-      // Get the authentication token from localStorage
-      const currentUserRaw = localStorage.getItem('currentUser');
-      const currentUser = currentUserRaw ? JSON.parse(currentUserRaw) : null;
-      const token = currentUser?.token || '';
-
-      // Prepare headers with authentication
-      const headers: Record<string, string> = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
       const res = await fetch(
         `${API_URL}/tenant/my-rented-properties?tenantId=${encodeURIComponent(user.email ?? '')}`,
-        { headers }
+        { headers: getAuthHeaders() }
       );
       if (res.ok) {
         const data: RentedProperty[] = await res.json();
@@ -198,18 +203,9 @@ const TenantMaintenanceTab: React.FC<{ user: AppUser }> = ({ user }) => {
 
   const fetchMyRequests = async () => {
     try {
-      // Get the authentication token from localStorage
-      const currentUserRaw = localStorage.getItem('currentUser');
-      const currentUser = currentUserRaw ? JSON.parse(currentUserRaw) : null;
-      const token = currentUser?.token || '';
-
-      // Prepare headers with authentication
-      const headers: Record<string, string> = {};
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
-      const res = await fetch(`${API_URL}/maintenance`, { headers });
+      const res = await fetch(`${API_URL}/maintenance`, { 
+        headers: getAuthHeaders() 
+      });
       if (res.ok) setMyRequests(await res.json());
     } catch { /* silent */ }
   };
@@ -225,44 +221,67 @@ const TenantMaintenanceTab: React.FC<{ user: AppUser }> = ({ user }) => {
     e.preventDefault();
     setFormError('');
 
+    console.log('🔍 [TenantMaintenance.handleSubmit] Starting submission...');
+    
     // Client-side validation
     if (!propertyId)         { setFormError('Please select the property you are renting.');    return; }
     if (!title.trim())       { setFormError('Please enter an issue title.');                   return; }
     if (!description.trim()) { setFormError('Please describe the problem in detail.');         return; }
 
+    // Debug: Check auth token
+    try {
+      const raw = localStorage.getItem('currentUser');
+      console.log('🔍 [TenantMaintenance.handleSubmit] currentUser in localStorage:', raw ? 'EXISTS' : 'MISSING');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        console.log('🔍 [TenantMaintenance.handleSubmit] User data:', {
+          id: parsed.id,
+          name: parsed.name,
+          role: parsed.role,
+          hasToken: !!parsed.token,
+          tokenPreview: parsed.token ? `${parsed.token.substring(0, 30)}...` : 'none'
+        });
+      } else {
+        console.error('❌ [TenantMaintenance.handleSubmit] No currentUser found in localStorage!');
+        setFormError('Authentication error: Please logout and login again.');
+        return;
+      }
+    } catch (err) {
+      console.error('❌ [TenantMaintenance.handleSubmit] Error reading localStorage:', err);
+    }
+
     setSubmitting(true);
 
     try {
-      // Get the authentication token from localStorage
-      const currentUserRaw = localStorage.getItem('currentUser');
-      const currentUser = currentUserRaw ? JSON.parse(currentUserRaw) : null;
-      const token = currentUser?.token || '';
-
-      // Prepare headers with authentication
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
+      const headers = getAuthHeaders();
+      console.log('🔍 [TenantMaintenance.handleSubmit] Request headers:', headers);
+      
+      const payload = {
+        property_id:  propertyId,
+        issue_title:  title.trim(),
+        description:  description.trim(),
+        severity,
+        tenant_id:    user.email,
+        renter_name:  user.name,
+        status:       'pending',
+        viewable_by:  'owner',
       };
-
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
+      console.log('🔍 [TenantMaintenance.handleSubmit] Payload:', payload);
+      
       const res = await fetch(`${API_URL}/maintenance/submit`, {
         method:  'POST',
-        headers: headers,
-        body: JSON.stringify({
-          property_id:  propertyId,
-          issue_title:  title.trim(),
-          description:  description.trim(),
-          severity,
-          tenant_id:    user.email,
-          renter_name:  user.name,
-          status:       'pending',
-          viewable_by:  'owner',
-        }),
+        headers,
+        body: JSON.stringify(payload),
       });
+      
+      console.log('🔍 [TenantMaintenance.handleSubmit] Response status:', res.status);
+      console.log('🔍 [TenantMaintenance.handleSubmit] Response ok:', res.ok);      
+      console.log('🔍 [TenantMaintenance.handleSubmit] Response status:', res.status);
+      console.log('🔍 [TenantMaintenance.handleSubmit] Response ok:', res.ok);
 
       if (res.ok || res.status === 201) {
+        console.log('✅ [TenantMaintenance.handleSubmit] Success! Request submitted.');
+        
         // ── Step 1: Instantly clear all form fields ────────────────────────
         // Setting state back to empty strings removes the text from the
         // controlled inputs immediately — no stale values remain on screen.
@@ -300,11 +319,20 @@ const TenantMaintenanceTab: React.FC<{ user: AppUser }> = ({ user }) => {
 
       } else {
         const body = await res.json().catch(() => ({}));
-        const msg  = body.message ?? 'Submission failed. Please try again.';
-        setFormError(msg);
+        console.error('❌ [TenantMaintenance.handleSubmit] Server error response:', body);
+        const msg  = body.message || body.error || 'Submission failed. Please try again.';
+        console.error('❌ [TenantMaintenance.handleSubmit] Error message:', msg);
+        
+        // Show specific help for auth errors
+        if (msg.includes('authentication') || msg.includes('token') || msg.includes('Unauthorized')) {
+          setFormError('Authentication error: Please logout and login again. Your session may have expired.');
+        } else {
+          setFormError(msg);
+        }
         triggerToast(msg, 'error');
       }
-    } catch {
+    } catch (err: any) {
+      console.error('❌ [TenantMaintenance.handleSubmit] Exception:', err);
       const msg = 'Network error — please check your connection and retry.';
       setFormError(msg);
       triggerToast(msg, 'error');

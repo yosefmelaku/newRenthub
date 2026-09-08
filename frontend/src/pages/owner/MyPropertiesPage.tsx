@@ -401,9 +401,30 @@ const AddPropertyModal: React.FC<AddModalProps> = ({ ownerId, onClose, onSaved }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    console.log('🔍 [AddProperty.handleSubmit] Form data:', {
+      title: form.title,
+      type: form.type,
+      city: form.city,
+      subcity: form.subcity,
+      address: form.address,
+      monthlyRent: form.monthlyRent,
+      beds: form.beds,
+      baths: form.baths,
+      officeSqm: form.officeSqm,
+      hasImage: !!form.imagePreview,
+    });
+    
     const msg = validateDetails(form);
-    if (msg) { setError(msg); return; }
+    if (msg) { 
+      console.error('❌ [AddProperty.handleSubmit] Validation failed:', msg);
+      setError(msg); 
+      // Scroll to top to show error
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return; 
+    }
 
+    console.log('✅ [AddProperty.handleSubmit] Validation passed, saving...');
     setSaving(true);
     setError('');
     try {
@@ -428,10 +449,14 @@ const AddPropertyModal: React.FC<AddModalProps> = ({ ownerId, onClose, onSaved }
         imageUrl: form.imagePreview || null,
       };
 
+      console.log('🔍 [AddProperty.handleSubmit] Payload:', payload);
       const result = await createOwnerProperty(payload);
+      console.log('✅ [AddProperty.handleSubmit] Property created successfully:', result.property.id);
       onSaved(result.property);
       onClose();
     } catch (err: any) {
+      console.error('❌ [AddProperty.handleSubmit] Save failed:', err);
+      console.error('❌ [AddProperty.handleSubmit] Error message:', err.message);
       setError(err.message || 'Failed to save property. Please try again.');
     } finally {
       setSaving(false);
@@ -480,9 +505,18 @@ const AddPropertyModal: React.FC<AddModalProps> = ({ ownerId, onClose, onSaved }
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="px-6 py-5">
+            {error && (
+              <div className="mb-5 flex items-start gap-3 bg-rose-50 border-2 border-rose-300 text-rose-700 px-4 py-3.5 rounded-xl animate-pulse">
+                <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-bold text-sm">Cannot Save Property</p>
+                  <p className="text-sm mt-0.5">{error}</p>
+                </div>
+              </div>
+            )}
             <FormFields form={form} onChange={onChange} onImageFile={onImageFile}
               onImageClear={() => setForm(p => ({ ...p, imagePreview: null, imageFile: null }))}
-              error={error} showImage={false} />
+              error="" showImage={false} />
             <div className="flex gap-3 pt-6">
               <button type="button" onClick={() => { setStep(1); setError(''); }}
                 className="flex items-center justify-center gap-1.5 border border-gray-200 text-gray-600 font-semibold text-sm rounded-xl py-2.5 px-4 hover:bg-gray-50 transition">
@@ -853,13 +887,42 @@ export const MyPropertiesPage: React.FC<MyPropertiesPageProps> = ({ user }) => {
   const [migrateMsg,   setMigrateMsg]    = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    if (!ownerId) { setLoading(false); return; }
+    console.log('🔍 [MyPropertiesPage.load] Starting load, ownerId:', ownerId);
+    
+    if (!ownerId) { 
+      console.error('❌ [MyPropertiesPage.load] No ownerId found');
+      setLoading(false); 
+      setError('Cannot load properties: No owner ID found. Please log in again.');
+      return; 
+    }
+    
+    // Debug: Check localStorage token
+    try {
+      const raw = localStorage.getItem('currentUser');
+      console.log('🔍 [MyPropertiesPage.load] currentUser in localStorage:', raw);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        console.log('🔍 [MyPropertiesPage.load] Parsed user:', {
+          id: parsed.id,
+          role: parsed.role,
+          hasToken: !!parsed.token,
+          tokenPreview: parsed.token ? `${parsed.token.substring(0, 30)}...` : 'none'
+        });
+      }
+    } catch (e) {
+      console.error('❌ [MyPropertiesPage.load] Error reading localStorage:', e);
+    }
+    
     setLoading(true);
     setError(null);
     try {
+      console.log('🔍 [MyPropertiesPage.load] Calling fetchOwnerProperties...');
       const data = await fetchOwnerProperties(ownerId);
+      console.log('✅ [MyPropertiesPage.load] Success! Got', data.properties.length, 'properties');
       setProperties(data.properties);
     } catch (err: any) {
+      console.error('❌ [MyPropertiesPage.load] Error:', err);
+      console.error('❌ [MyPropertiesPage.load] Error message:', err.message);
       setError(err.message || 'Failed to load properties.');
     } finally {
       setLoading(false);
@@ -916,16 +979,56 @@ export const MyPropertiesPage: React.FC<MyPropertiesPageProps> = ({ user }) => {
   // ── Error State ─────────────────────────────────────────────────────────────
   if (error && properties.length === 0) {
     return (
-      <div className="p-8 min-h-screen flex flex-col items-center justify-center gap-4 bg-gray-50 text-center">
-        <WifiOff className="h-10 w-10 text-rose-500" />
-        <div>
-          <p className="font-bold text-gray-900">Failed to load properties</p>
-          <p className="text-sm text-gray-500 mt-1">{error}</p>
+      <div className="p-6 sm:p-8 bg-gray-50 min-h-screen space-y-8 animate-fadeIn">
+        {/* Header with Add Button */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">My Property Portfolio</h1>
+            <p className="text-gray-500 text-sm mt-1">0 properties</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {ownerId && (
+              <button onClick={() => setShowAdd(true)}
+                className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm px-5 py-2.5 rounded-xl shadow-sm transition">
+                <Plus className="h-4 w-4" /> Add Property
+              </button>
+            )}
+          </div>
         </div>
-        <button onClick={load}
-          className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm px-5 py-2.5 rounded-xl shadow-sm transition">
-          <RefreshCw className="h-4 w-4" /> Retry
-        </button>
+
+        {/* Error Banner */}
+        <div className="flex items-start gap-3 bg-rose-50 border border-rose-200 text-rose-700 px-5 py-4 rounded-xl">
+          <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="font-bold text-sm">Failed to load properties</p>
+            <p className="text-sm mt-1">{error}</p>
+            {!ownerId && (
+              <p className="text-xs mt-2 text-rose-600">
+                Tip: Try logging out and logging back in to fix authentication issues.
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Empty State */}
+        <div className="flex flex-col items-center justify-center py-16 gap-4 text-gray-400 bg-white rounded-xl border border-gray-200">
+          <Building2 className="h-12 w-12 text-gray-300" />
+          <div className="text-center">
+            <p className="font-semibold text-lg text-gray-700">No properties yet</p>
+            <p className="text-sm mt-1">Click the "Add Property" button above to get started</p>
+          </div>
+        </div>
+
+        {/* Modals */}
+        {showAdd && ownerId && (
+          <AddPropertyModal ownerId={ownerId} onClose={() => setShowAdd(false)} onSaved={handleAdd} />
+        )}
+        {editTarget && ownerId && (
+          <EditPropertyModal property={editTarget} ownerId={ownerId} onClose={() => setEditTarget(null)} onSaved={handleEdit} />
+        )}
+        {deleteTarget && (
+          <DeleteDialog property={deleteTarget} onCancel={() => setDeleteTarget(null)} onConfirm={handleDelete} deleting={deleting} />
+        )}
       </div>
     );
   }
