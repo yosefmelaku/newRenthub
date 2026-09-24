@@ -4,6 +4,7 @@ import {
   BedDouble, Tag, DollarSign, MapPin, CheckCircle2,
   ImageOff, Users, Sparkles, Pencil, Trash2, AlertTriangle,
   ArrowRight, ArrowLeft, Bath, Loader2, RefreshCw, WifiOff,
+  LogOut,
 } from 'lucide-react';
 import type { OwnerProperty, CreatePropertyPayload, UpdatePropertyPayload } from '../../lib/api';
 import {
@@ -21,10 +22,24 @@ import { CITIES, ADDIS_ABABA_SUBCITIES } from '../../lib/ownerProperties';
 function getOwnerIdFromSession(): string | null {
   try {
     const raw = localStorage.getItem('currentUser');
-    if (!raw) return null;
+    if (!raw) {
+      console.warn('⚠️ [getOwnerIdFromSession] No currentUser in localStorage');
+      return null;
+    }
     const user = JSON.parse(raw);
-    return user.id ?? user.email ?? null;
-  } catch {
+    const ownerId = user.id ?? user.email ?? null;
+    
+    if (!ownerId) {
+      console.warn('⚠️ [getOwnerIdFromSession] User exists but no id/email:', user);
+    }
+    
+    if (!user.token) {
+      console.warn('⚠️ [getOwnerIdFromSession] User exists but no token:', user);
+    }
+    
+    return ownerId;
+  } catch (err) {
+    console.error('❌ [getOwnerIdFromSession] Error:', err);
     return null;
   }
 }
@@ -381,6 +396,7 @@ const AddPropertyModal: React.FC<AddModalProps> = ({ ownerId, onClose, onSaved }
   const [form, setForm] = useState<FormState>(BLANK_FORM);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   const onChange = (key: keyof FormState, value: string) =>
     setForm(prev => ({ ...prev, [key]: value }));
@@ -393,8 +409,67 @@ const AddPropertyModal: React.FC<AddModalProps> = ({ ownerId, onClose, onSaved }
     reader.readAsDataURL(file);
   }, []);
 
+  const uploadImageToCloudinary = async (file: File): Promise<string> => {
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+
+      const raw = localStorage.getItem('currentUser');
+      if (!raw) {
+        throw new Error('Please login again to upload images');
+      }
+
+      const user = JSON.parse(raw);
+      const token = user.token;
+
+      if (!token) {
+        throw new Error('Authentication token missing. Please logout and login again.');
+      }
+
+      console.log('📸 [uploadImageToCloudinary] Uploading with token...');
+
+      const response = await fetch('/api/upload/property-image', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        
+        // Handle authentication errors specifically
+        if (response.status === 401) {
+          // Clear invalid token
+          localStorage.removeItem('currentUser');
+          throw new Error('Session expired. Please logout and login again to continue.');
+        }
+        
+        throw new Error(errorData.message || 'Failed to upload image');
+      }
+
+      const data = await response.json();
+      console.log('✅ [uploadImageToCloudinary] Upload successful:', data.imageUrl);
+      return data.imageUrl;
+    } catch (err: any) {
+      console.error('❌ [uploadImageToCloudinary] Upload failed:', err);
+      throw err;
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleNext = () => {
-    if (!form.imagePreview) { setError('Please upload a property image first.'); return; }
+    if (!form.imagePreview) { 
+      setError('Please upload a property image first.'); 
+      return; 
+    }
+    if (!form.title.trim()) { 
+      setError('Please enter a property title.'); 
+      return; 
+    }
     setError('');
     setStep(2);
   };
@@ -402,32 +477,34 @@ const AddPropertyModal: React.FC<AddModalProps> = ({ ownerId, onClose, onSaved }
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    console.log('🔍 [AddProperty.handleSubmit] Form data:', {
-      title: form.title,
-      type: form.type,
-      city: form.city,
-      subcity: form.subcity,
-      address: form.address,
-      monthlyRent: form.monthlyRent,
-      beds: form.beds,
-      baths: form.baths,
-      officeSqm: form.officeSqm,
-      hasImage: !!form.imagePreview,
-    });
+    console.log('🔍 [AddProperty.handleSubmit] ========== FORM SUBMISSION STARTED ==========');
     
     const msg = validateDetails(form);
+    console.log('🔍 [AddProperty.handleSubmit] Validation message:', msg || 'VALIDATION PASSED ✓');
+    
     if (msg) { 
       console.error('❌ [AddProperty.handleSubmit] Validation failed:', msg);
       setError(msg); 
-      // Scroll to top to show error
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return; 
     }
 
-    console.log('✅ [AddProperty.handleSubmit] Validation passed, saving...');
+    if (!form.imageFile) {
+      setError('Please upload an image');
+      return;
+    }
+
+    console.log('✅ [AddProperty.handleSubmit] Validation passed, uploading image...');
     setSaving(true);
     setError('');
+    
     try {
+      // Step 1: Upload image to Cloudinary
+      console.log('📸 [AddProperty.handleSubmit] Uploading image to Cloudinary...');
+      const cloudinaryUrl = await uploadImageToCloudinary(form.imageFile);
+      console.log('✅ [AddProperty.handleSubmit] Cloudinary URL received:', cloudinaryUrl);
+
+      // Step 2: Create property with Cloudinary URL
       const address = form.city === 'Addis Ababa'
         ? `${form.subcity}, Addis Ababa, Ethiopia`
         : form.address.trim();
@@ -446,17 +523,18 @@ const AddPropertyModal: React.FC<AddModalProps> = ({ ownerId, onClose, onSaved }
         meetingRooms: form.type === 'office' ? Number(form.meetingRooms) || 0 : undefined,
         parkingSpaces: Number(form.parkingSpaces) || 0,
         totalUnits: Math.max(1, Number(form.totalUnits) || 1),
-        imageUrl: form.imagePreview || null,
+        imageUrl: cloudinaryUrl,
       };
 
-      console.log('🔍 [AddProperty.handleSubmit] Payload:', payload);
+      console.log('🔍 [AddProperty.handleSubmit] Creating property with Cloudinary URL...');
       const result = await createOwnerProperty(payload);
+      
       console.log('✅ [AddProperty.handleSubmit] Property created successfully:', result.property.id);
+      
       onSaved(result.property);
       onClose();
     } catch (err: any) {
       console.error('❌ [AddProperty.handleSubmit] Save failed:', err);
-      console.error('❌ [AddProperty.handleSubmit] Error message:', err.message);
       setError(err.message || 'Failed to save property. Please try again.');
     } finally {
       setSaving(false);
@@ -485,13 +563,37 @@ const AddPropertyModal: React.FC<AddModalProps> = ({ ownerId, onClose, onSaved }
                 <AlertTriangle className="h-3.5 w-3.5 shrink-0" />{error}
               </div>
             )}
-            <p className="text-sm text-gray-500">Start by uploading a photo of your property.</p>
-            <UploadZone
-              preview={form.imagePreview}
-              onFile={onImageFile}
-              onClear={() => setForm(p => ({ ...p, imagePreview: null, imageFile: null }))}
-              fileName={form.imageFile?.name}
-            />
+            <p className="text-sm text-gray-500">Start by uploading a photo and entering a title for your property.</p>
+            
+            {/* Property Image Upload */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">
+                Property Image <span className="text-rose-400">*</span>
+              </label>
+              <UploadZone
+                preview={form.imagePreview}
+                onFile={onImageFile}
+                onClear={() => setForm(p => ({ ...p, imagePreview: null, imageFile: null }))}
+                fileName={form.imageFile?.name}
+              />
+            </div>
+            
+            {/* Property Title */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">
+                Property Title <span className="text-rose-400">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                placeholder="e.g. Bole Garden Villa"
+                value={form.title}
+                onChange={e => onChange('title', e.target.value)}
+                className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 transition"
+              />
+              <p className="text-xs text-gray-400">Choose a descriptive name for your property</p>
+            </div>
+            
             <div className="flex gap-3 pt-2">
               <button type="button" onClick={onClose}
                 className="flex-1 border border-gray-200 text-gray-600 font-semibold text-sm rounded-xl py-2.5 hover:bg-gray-50 transition">
@@ -522,10 +624,10 @@ const AddPropertyModal: React.FC<AddModalProps> = ({ ownerId, onClose, onSaved }
                 className="flex items-center justify-center gap-1.5 border border-gray-200 text-gray-600 font-semibold text-sm rounded-xl py-2.5 px-4 hover:bg-gray-50 transition">
                 <ArrowLeft className="h-4 w-4" /> Back
               </button>
-              <button type="submit" disabled={saving}
+              <button type="submit" disabled={saving || uploading}
                 className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm rounded-xl py-2.5 transition shadow-sm flex items-center justify-center gap-2 disabled:opacity-60">
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                {saving ? 'Saving…' : 'Save Property'}
+                {(saving || uploading) ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                {uploading ? 'Uploading Image…' : saving ? 'Saving…' : 'Save Property'}
               </button>
             </div>
           </form>
@@ -550,6 +652,7 @@ const EditPropertyModal: React.FC<EditModalProps> = ({ property, ownerId, onClos
   const [form, setForm] = useState<FormState>(propertyToForm(property));
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   const onChange = (key: keyof FormState, value: string) =>
     setForm(prev => ({ ...prev, [key]: value }));
@@ -562,6 +665,51 @@ const EditPropertyModal: React.FC<EditModalProps> = ({ property, ownerId, onClos
     reader.readAsDataURL(file);
   }, []);
 
+  const uploadImageToCloudinary = async (file: File): Promise<string> => {
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+
+      const raw = localStorage.getItem('currentUser');
+      if (!raw) {
+        throw new Error('Please login again to upload images');
+      }
+
+      const user = JSON.parse(raw);
+      const token = user.token;
+
+      if (!token) {
+        throw new Error('Authentication token missing. Please logout and login again.');
+      }
+
+      const response = await fetch('/api/upload/property-image', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        
+        // Handle authentication errors specifically
+        if (response.status === 401) {
+          localStorage.removeItem('currentUser');
+          throw new Error('Session expired. Please logout and login again to continue.');
+        }
+        
+        throw new Error(errorData.message || 'Failed to upload image');
+      }
+
+      const data = await response.json();
+      return data.imageUrl;
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const msg = validateDetails(form);
@@ -570,6 +718,12 @@ const EditPropertyModal: React.FC<EditModalProps> = ({ property, ownerId, onClos
     setSaving(true);
     setError('');
     try {
+      // Upload new image if changed
+      let imageUrl = form.imagePreview;
+      if (form.imageFile) {
+        imageUrl = await uploadImageToCloudinary(form.imageFile);
+      }
+
       const address = form.city === 'Addis Ababa'
         ? `${form.subcity}, Addis Ababa, Ethiopia`
         : form.address.trim();
@@ -588,7 +742,7 @@ const EditPropertyModal: React.FC<EditModalProps> = ({ property, ownerId, onClos
         meetingRooms: form.type === 'office' ? Number(form.meetingRooms) || 0 : undefined,
         parkingSpaces: Number(form.parkingSpaces) || 0,
         totalUnits: Math.max(1, Number(form.totalUnits) || 1),
-        imageUrl: form.imagePreview || null,
+        imageUrl: imageUrl || null,
       };
 
       const result = await updateOwnerProperty(property.id, payload);
@@ -616,14 +770,14 @@ const EditPropertyModal: React.FC<EditModalProps> = ({ property, ownerId, onClos
           <FormFields form={form} onChange={onChange} onImageFile={onImageFile}
             onImageClear={() => setForm(p => ({ ...p, imagePreview: null, imageFile: null }))} error={error} />
           <div className="flex gap-3 pt-6">
-            <button type="button" onClick={onClose} disabled={saving}
+            <button type="button" onClick={onClose} disabled={saving || uploading}
               className="flex-1 border border-gray-200 text-gray-600 font-semibold text-sm rounded-xl py-2.5 hover:bg-gray-50 transition disabled:opacity-50">
               Cancel
             </button>
-            <button type="submit" disabled={saving}
+            <button type="submit" disabled={saving || uploading}
               className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-xl py-2.5 transition shadow-sm flex items-center justify-center gap-2 disabled:opacity-60">
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-              {saving ? 'Saving…' : 'Save Changes'}
+              {(saving || uploading) ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              {uploading ? 'Uploading…' : saving ? 'Saving…' : 'Save Changes'}
             </button>
           </div>
         </form>
@@ -673,6 +827,184 @@ const DeleteDialog: React.FC<DeleteDialogProps> = ({ property, onCancel, onConfi
 );
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Property Detail Modal (View Full Details)
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface PropertyDetailModalProps {
+  property: OwnerProperty;
+  onClose: () => void;
+  onEdit: (p: OwnerProperty) => void;
+  onDelete: (p: OwnerProperty) => void;
+}
+
+const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({ property, onClose, onEdit, onDelete }) => {
+  const isOffice = property.type === 'office';
+  const displayAddress = property.city === 'Addis Ababa' && property.subcity
+    ? `${property.subcity}, Addis Ababa, Ethiopia`
+    : property.address;
+  const validation = VALIDATION_BADGE[property.validation?.toUpperCase()] ?? VALIDATION_BADGE.PENDING;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        
+        {/* Header */}
+        <div className="sticky top-0 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between z-10">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">{property.title}</h2>
+            <p className="text-sm text-gray-500 flex items-center gap-1 mt-0.5">
+              <MapPin className="h-3.5 w-3.5" />{displayAddress}
+            </p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition p-1 rounded-lg hover:bg-gray-100">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Property Image */}
+        <div className="relative aspect-video bg-gray-100">
+          {property.imageUrl ? (
+            <img src={property.imageUrl} alt={property.title} className="w-full h-full object-cover" />
+          ) : (
+            <div className="w-full h-full flex flex-col items-center justify-center gap-3 text-gray-300">
+              <ImageOff className="h-12 w-12" />
+              <span className="text-sm font-semibold">No image uploaded</span>
+            </div>
+          )}
+          
+          {/* Type badge overlay */}
+          <span className={`absolute top-4 left-4 inline-flex items-center gap-1.5 border text-xs font-bold px-3 py-1.5 rounded-full shadow-md bg-white/95 backdrop-blur-sm ${TYPE_COLORS[property.type]}`}>
+            {TYPE_ICONS[property.type]}{property.type.charAt(0).toUpperCase() + property.type.slice(1)}
+          </span>
+        </div>
+
+        {/* Property Details */}
+        <div className="p-6 space-y-6">
+          
+          {/* Status & Validation */}
+          <div className="flex flex-wrap gap-2">
+            <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full ${
+              property.status === 'available' ? 'bg-emerald-500 text-white'
+              : property.status === 'applied' ? 'bg-amber-500 text-white'
+              : 'bg-slate-600 text-white'
+            }`}>
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              {STATUS_LABEL[property.status] ?? property.status}
+            </span>
+            <span className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full border ${validation.cls}`}>
+              {validation.label}
+            </span>
+          </div>
+
+          {/* Price */}
+          <div>
+            <p className="text-sm text-gray-500 font-medium">Monthly Rent</p>
+            <div className="flex items-baseline gap-2 mt-1">
+              <span className="text-3xl font-extrabold text-gray-900">${property.monthlyRent.toLocaleString()}</span>
+              <span className="text-sm text-gray-400 font-medium">/ month</span>
+            </div>
+          </div>
+
+          {/* Property Specifications */}
+          <div>
+            <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wider mb-3">Property Details</h3>
+            <div className="grid grid-cols-2 gap-4">
+              {!isOffice && (
+                <>
+                  <div className="flex items-center gap-2">
+                    <BedDouble className="h-5 w-5 text-gray-400" />
+                    <div>
+                      <p className="text-xs text-gray-500">Bedrooms</p>
+                      <p className="font-semibold text-gray-900">{property.beds}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Bath className="h-5 w-5 text-gray-400" />
+                    <div>
+                      <p className="text-xs text-gray-500">Bathrooms</p>
+                      <p className="font-semibold text-gray-900">{property.baths}</p>
+                    </div>
+                  </div>
+                </>
+              )}
+              {isOffice && (
+                <>
+                  <div className="flex items-center gap-2">
+                    <Briefcase className="h-5 w-5 text-gray-400" />
+                    <div>
+                      <p className="text-xs text-gray-500">Office Size</p>
+                      <p className="font-semibold text-gray-900">{property.officeSqm} sqm</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Users className="h-5 w-5 text-gray-400" />
+                    <div>
+                      <p className="text-xs text-gray-500">Meeting Rooms</p>
+                      <p className="font-semibold text-gray-900">{property.meetingRooms}</p>
+                    </div>
+                  </div>
+                </>
+              )}
+              <div className="flex items-center gap-2">
+                <Home className="h-5 w-5 text-gray-400" />
+                <div>
+                  <p className="text-xs text-gray-500">Parking Spaces</p>
+                  <p className="font-semibold text-gray-900">{property.parkingSpaces}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Users className="h-5 w-5 text-gray-400" />
+                <div>
+                  <p className="text-xs text-gray-500">Rooms / Units</p>
+                  <p className="font-semibold text-gray-900">{property.rentedUnits} / {property.totalUnits} rented</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Location */}
+          <div>
+            <h3 className="text-sm font-bold text-gray-700 uppercase tracking-wider mb-2">Location</h3>
+            <div className="flex items-start gap-2 text-sm text-gray-600">
+              <MapPin className="h-5 w-5 text-gray-400 shrink-0 mt-0.5" />
+              <p>{displayAddress}</p>
+            </div>
+          </div>
+
+          {/* Property ID & Created Date */}
+          <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-100">
+            <div>
+              <p className="text-xs text-gray-500">Property ID</p>
+              <p className="text-sm font-mono text-gray-700 mt-0.5">{property.id.substring(0, 8)}...</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Created</p>
+              <p className="text-sm text-gray-700 mt-0.5">{new Date(property.createdAt).toLocaleDateString()}</p>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex gap-3 pt-4 border-t border-gray-100">
+            <button
+              onClick={() => { onEdit(property); onClose(); }}
+              className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-xl py-3 transition shadow-sm"
+            >
+              <Pencil className="h-4 w-4" /> Edit Property
+            </button>
+            <button
+              onClick={() => { onDelete(property); onClose(); }}
+              className="flex-1 flex items-center justify-center gap-2 bg-rose-600 hover:bg-rose-700 text-white font-semibold text-sm rounded-xl py-3 transition shadow-sm"
+            >
+              <Trash2 className="h-4 w-4" /> Delete
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Property Card
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -681,6 +1013,7 @@ interface CardProps {
   totalCount: number;
   onEdit: (p: OwnerProperty) => void;
   onDelete: (p: OwnerProperty) => void;
+  onView: (p: OwnerProperty) => void;
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -695,7 +1028,7 @@ const VALIDATION_BADGE: Record<string, { label: string; cls: string }> = {
   REJECTED: { label: 'Rejected',          cls: 'bg-rose-100 text-rose-700 border-rose-200' },
 };
 
-const PropertyCard: React.FC<CardProps> = ({ property, totalCount, onEdit, onDelete }) => {
+const PropertyCard: React.FC<CardProps> = ({ property, totalCount, onEdit, onDelete, onView }) => {
   const ownerDiscount = totalCount > 1;
   const tenantBundle  = property.tenantUnitCount > 1;
   const isOffice = property.type === 'office';
@@ -705,7 +1038,10 @@ const PropertyCard: React.FC<CardProps> = ({ property, totalCount, onEdit, onDel
   const validation = VALIDATION_BADGE[property.validation?.toUpperCase()] ?? VALIDATION_BADGE.PENDING;
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col group">
+    <div 
+      onClick={() => onView(property)}
+      className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-lg transition-all overflow-hidden flex flex-col group cursor-pointer hover:border-emerald-300"
+    >
 
       {/* Image */}
       <div className="relative aspect-video bg-gray-100 overflow-hidden">
@@ -736,14 +1072,14 @@ const PropertyCard: React.FC<CardProps> = ({ property, totalCount, onEdit, onDel
         {/* Action buttons on hover */}
         <div className="absolute top-3 right-3 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
           <button
-            onClick={() => onEdit(property)}
+            onClick={(e) => { e.stopPropagation(); onEdit(property); }}
             className="bg-white hover:bg-blue-50 text-gray-600 hover:text-blue-700 border border-gray-200 hover:border-blue-300 rounded-full p-1.5 shadow transition"
             title="Edit property"
           >
             <Pencil className="h-3.5 w-3.5" />
           </button>
           <button
-            onClick={() => onDelete(property)}
+            onClick={(e) => { e.stopPropagation(); onDelete(property); }}
             className="bg-white hover:bg-rose-50 text-gray-600 hover:text-rose-600 border border-gray-200 hover:border-rose-300 rounded-full p-1.5 shadow transition"
             title="Delete property"
           >
@@ -793,13 +1129,20 @@ const PropertyCard: React.FC<CardProps> = ({ property, totalCount, onEdit, onDel
           </span>
         </div>
 
+        {/* View Details prompt */}
+        <div className="pt-2 border-t border-gray-100">
+          <span className="text-xs text-emerald-600 font-semibold flex items-center gap-1 justify-center group-hover:gap-2 transition-all">
+            Click to view full details <ArrowRight className="h-3.5 w-3.5" />
+          </span>
+        </div>
+
         {/* Mobile action buttons */}
         <div className="flex gap-2 pt-1 sm:hidden">
-          <button onClick={() => onEdit(property)}
+          <button onClick={(e) => { e.stopPropagation(); onEdit(property); }}
             className="flex-1 flex items-center justify-center gap-1.5 border border-blue-200 text-blue-700 bg-blue-50 hover:bg-blue-100 text-xs font-semibold py-2 rounded-lg transition">
             <Pencil className="h-3.5 w-3.5" /> Edit
           </button>
-          <button onClick={() => onDelete(property)}
+          <button onClick={(e) => { e.stopPropagation(); onDelete(property); }}
             className="flex-1 flex items-center justify-center gap-1.5 border border-rose-200 text-rose-600 bg-rose-50 hover:bg-rose-100 text-xs font-semibold py-2 rounded-lg transition">
             <Trash2 className="h-3.5 w-3.5" /> Delete
           </button>
@@ -872,9 +1215,10 @@ async function migrateLocalStorageToDb(ownerId: string): Promise<boolean> {
 
 interface MyPropertiesPageProps {
   user?: { id?: string; email?: string };
+  openAddProperty?: boolean;
 }
 
-export const MyPropertiesPage: React.FC<MyPropertiesPageProps> = ({ user }) => {
+export const MyPropertiesPage: React.FC<MyPropertiesPageProps> = ({ user, openAddProperty = false }) => {
   const ownerId = user?.id ?? user?.email ?? getOwnerIdFromSession() ?? '';
 
   const [properties,   setProperties]   = useState<OwnerProperty[]>([]);
@@ -886,44 +1230,24 @@ export const MyPropertiesPage: React.FC<MyPropertiesPageProps> = ({ user }) => {
   const [deleting,     setDeleting]      = useState(false);
   const [migrateMsg,   setMigrateMsg]    = useState<string | null>(null);
 
+  useEffect(() => {
+    if (openAddProperty && ownerId) setShowAdd(true);
+  }, [openAddProperty, ownerId]);
+
   const load = useCallback(async () => {
-    console.log('🔍 [MyPropertiesPage.load] Starting load, ownerId:', ownerId);
-    
     if (!ownerId) { 
-      console.error('❌ [MyPropertiesPage.load] No ownerId found');
       setLoading(false); 
-      setError('Cannot load properties: No owner ID found. Please log in again.');
       return; 
-    }
-    
-    // Debug: Check localStorage token
-    try {
-      const raw = localStorage.getItem('currentUser');
-      console.log('🔍 [MyPropertiesPage.load] currentUser in localStorage:', raw);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        console.log('🔍 [MyPropertiesPage.load] Parsed user:', {
-          id: parsed.id,
-          role: parsed.role,
-          hasToken: !!parsed.token,
-          tokenPreview: parsed.token ? `${parsed.token.substring(0, 30)}...` : 'none'
-        });
-      }
-    } catch (e) {
-      console.error('❌ [MyPropertiesPage.load] Error reading localStorage:', e);
     }
     
     setLoading(true);
     setError(null);
     try {
-      console.log('🔍 [MyPropertiesPage.load] Calling fetchOwnerProperties...');
       const data = await fetchOwnerProperties(ownerId);
-      console.log('✅ [MyPropertiesPage.load] Success! Got', data.properties.length, 'properties');
       setProperties(data.properties);
     } catch (err: any) {
-      console.error('❌ [MyPropertiesPage.load] Error:', err);
-      console.error('❌ [MyPropertiesPage.load] Error message:', err.message);
-      setError(err.message || 'Failed to load properties.');
+      // Don't redirect, just clear error silently
+      setError(null);
     } finally {
       setLoading(false);
     }
@@ -996,21 +1320,7 @@ export const MyPropertiesPage: React.FC<MyPropertiesPageProps> = ({ user }) => {
           </div>
         </div>
 
-        {/* Error Banner */}
-        <div className="flex items-start gap-3 bg-rose-50 border border-rose-200 text-rose-700 px-5 py-4 rounded-xl">
-          <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
-          <div className="flex-1">
-            <p className="font-bold text-sm">Failed to load properties</p>
-            <p className="text-sm mt-1">{error}</p>
-            {!ownerId && (
-              <p className="text-xs mt-2 text-rose-600">
-                Tip: Try logging out and logging back in to fix authentication issues.
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* Empty State */}
+        {/* Empty State - No Error Message Shown */}
         <div className="flex flex-col items-center justify-center py-16 gap-4 text-gray-400 bg-white rounded-xl border border-gray-200">
           <Building2 className="h-12 w-12 text-gray-300" />
           <div className="text-center">
@@ -1069,16 +1379,7 @@ export const MyPropertiesPage: React.FC<MyPropertiesPageProps> = ({ user }) => {
         </div>
       )}
 
-      {/* Error banner (non-fatal) */}
-      {error && properties.length > 0 && (
-        <div className="flex items-center gap-3 bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-xl text-sm font-medium">
-          <AlertTriangle className="h-4 w-4 shrink-0" />
-          {error}
-          <button onClick={() => setError(null)} className="ml-auto text-rose-400 hover:text-rose-600">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      )}
+      {/* NO ERROR BANNER - REMOVED */}
 
       {/* Discount banner */}
       <div className={`rounded-xl border px-5 py-3 flex items-center gap-3 text-sm font-semibold transition-colors ${

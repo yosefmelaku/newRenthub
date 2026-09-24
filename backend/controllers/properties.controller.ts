@@ -63,6 +63,10 @@ export const createProperty = async (req: Request, res: Response) => {
   }
 
   try {
+    console.log('📸 [createProperty] Received request');
+    console.log('📸 [createProperty] Image URL length:', imageUrl?.length || 0);
+    console.log('📸 [createProperty] Image URL preview:', imageUrl?.substring(0, 50) || 'null');
+    
     const property = await prisma.property.create({
       data: {
         owner_id:       ownerId,
@@ -84,6 +88,9 @@ export const createProperty = async (req: Request, res: Response) => {
       },
     });
 
+    console.log('✅ [createProperty] Property created successfully');
+    console.log('✅ [createProperty] Saved image_url length:', property.image_url?.length || 0);
+    
     return res.status(201).json({ property: mapToClient(property) });
   } catch (err) {
     console.error('[createProperty]', err);

@@ -57,13 +57,14 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 // 3. Configure Request Size Limits (protect against body-payload Denial of Service attacks)
+// Increased limit to 10MB to support base64-encoded property images
 app.use(express.json({
-  limit: '100kb',
+  limit: '10mb',
   verify: (req: any, res, buf) => {
     req.rawBody = buf;
   }
 }));
-app.use(express.urlencoded({ limit: '100kb', extended: true }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // 4. Rate Limiting Middleware Definitions
 const authLimiter = rateLimit({

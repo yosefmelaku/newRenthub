@@ -47,8 +47,6 @@ export type UpdatePropertyPayload = Partial<CreatePropertyPayload>;
 const API = '/api';
 
 // ── Auth helper ───────────────────────────────────────────────────────────────
-// Sends the logged-in user's email as a Bearer token — the backend middleware
-// resolves the full user record from the DB via this email.
 const authHeaders = (): Record<string, string> => {
   const raw   = typeof window !== 'undefined' ? localStorage.getItem('currentUser') : null;
   const token = raw ? JSON.parse(raw).token ?? '' : '';
@@ -184,8 +182,24 @@ export async function fetchClassifiedUsers(role?: string, search?: string): Prom
   if (role)   params.set('role',   role);
   if (search) params.set('search', search);
   const url = `${API}/admin/users${params.toString() ? '?' + params : ''}`;
+  
+  console.log('🔍 [fetchClassifiedUsers] Making request to:', url);
+  console.log('🔍 [fetchClassifiedUsers] Auth headers:', authHeaders());
+  
   const res = await fetch(url, { headers: authHeaders() });
-  return handleResponse<{ count: number; users: AdminUser[] }>(res);
+  
+  console.log('📡 [fetchClassifiedUsers] Response status:', res.status);
+  
+  if (!res.ok) {
+    const errorBody = await res.json().catch(() => ({}));
+    console.error('❌ [fetchClassifiedUsers] Error response:', errorBody);
+    throw new Error(errorBody.message || errorBody.error || `HTTP ${res.status}`);
+  }
+  
+  const data = await res.json();
+  console.log('✅ [fetchClassifiedUsers] Success! Users received:', data.count);
+  
+  return data as { count: number; users: AdminUser[] };
 }
 
 export async function activateUser(userId: string): Promise<void> {

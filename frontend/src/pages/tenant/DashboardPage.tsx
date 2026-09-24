@@ -3,10 +3,12 @@ import {
   Calendar, CreditCard, Wrench, User,
   ChevronDown, CheckCircle2, Clock, AlertCircle, Send,
   Menu, Building, AlertTriangle, CheckSquare, Loader2,
-  ShieldAlert, Trash2, X,
+  ShieldAlert, Trash2, X, FileText, Home, MessageSquareText,
 } from 'lucide-react';
 import type { AppUser, Booking, PropertyListing } from '../../types';
 import { TenantSidebar, TENANT_NAV_ITEMS } from '../../components/TenantSidebar';
+import { LeaseContractPage } from './LeaseContractPage';
+import jsPDF from 'jspdf';
 
 const API_URL = '/api';
 
@@ -253,6 +255,15 @@ const TenantMaintenanceTab: React.FC<{ user: AppUser }> = ({ user }) => {
     setSubmitting(true);
 
     try {
+      const rawUser = localStorage.getItem('currentUser');
+      const storedUser = rawUser ? JSON.parse(rawUser) : null;
+      if (!storedUser?.token) {
+        const authMessage = 'Your session is missing or expired. Please log out and sign in again before sending this request.';
+        setFormError(authMessage);
+        triggerToast(authMessage, 'error');
+        return;
+      }
+
       const headers = getAuthHeaders();
       console.log('🔍 [TenantMaintenance.handleSubmit] Request headers:', headers);
       
@@ -639,6 +650,118 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
   const [address, setAddress] = useState(user.address || '');
   const [phone, setPhone] = useState(user.phone || '');
 
+  // State for lease contract viewing
+  const [viewingLeaseContract, setViewingLeaseContract] = useState(false);
+  const [currentLease, setCurrentLease] = useState<any>(null);
+
+  // Sample property data for lease viewing
+  const sampleProperty = {
+    id: '1',
+    title: 'Luxury Villa',
+    address: '123 Sunrise Valley Lane, Beverly Hills',
+    type: 'Villa',
+    rent: 2400,
+    securityDeposit: 2400,
+  };
+
+  // Handle viewing lease contract
+  const handleViewContract = () => {
+    const lease = {
+      id: '1',
+      leaseNumber: 'LSE-2027-00124',
+      status: 'active' as const,
+      property: {
+        title: sampleProperty.title,
+        address: sampleProperty.address,
+        city: 'Los Angeles, CA 90210',
+        type: sampleProperty.type,
+        image: '/villa.png',
+      },
+      tenant: {
+        name: user.name,
+        email: user.email || 'tenant@example.com',
+        phone: user.phone || '+1 (555) 987-6543',
+      },
+      landlord: {
+        name: 'Alex Johnson',
+        email: 'alex.johnson@renthub.com',
+        phone: '+1 (555) 123-4567',
+      },
+      term: {
+        startDate: '2026-01-15',
+        endDate: '2027-01-14',
+        duration: 12,
+      },
+      financial: {
+        monthlyRent: sampleProperty.rent,
+        securityDeposit: sampleProperty.securityDeposit,
+        firstMonthRent: sampleProperty.rent,
+        totalUpfront: sampleProperty.rent + sampleProperty.securityDeposit,
+        paymentDueDay: 1,
+      },
+      terms: [
+        'Tenant agrees to pay rent on or before the 1st day of each month.',
+        'Security deposit will be refunded within 30 days of lease termination, minus any deductions for damages.',
+        'Tenant is responsible for utilities including electricity, gas, and internet.',
+        'Property must be maintained in good condition. Normal wear and tear is expected.',
+        'Property Owner will provide 24-hour notice before entering the property except in emergencies.',
+      ],
+      signatures: {
+        tenant: {
+          signed: true,
+          date: '2026-01-15',
+        },
+        landlord: {
+          signed: true,
+          date: '2026-01-15',
+        },
+      },
+      createdAt: '2026-01-15',
+      lastUpdated: '2026-01-15',
+    };
+    setCurrentLease(lease);
+    setViewingLeaseContract(true);
+  };
+
+  // Handle downloading PDF
+  const handleDownloadPDF = () => {
+    const doc = new jsPDF();
+    
+    // Title
+    doc.setFontSize(18);
+    doc.text('Residential Lease Agreement', 20, 20);
+    
+    // Lease Details
+    doc.setFontSize(12);
+    doc.text(`Lease Number: LSE-2027-00124`, 20, 35);
+    doc.text(`Property: ${sampleProperty.title}`, 20, 45);
+    doc.text(`Address: ${sampleProperty.address}`, 20, 55);
+    doc.text(`Type: ${sampleProperty.type}`, 20, 65);
+    
+    // Parties
+    doc.text('PROPERTY OWNER:', 20, 80);
+    doc.text(`Name: Alex Johnson`, 25, 88);
+    doc.text(`Email: alex.johnson@renthub.com`, 25, 96);
+    
+    doc.text('TENANT:', 20, 110);
+    doc.text(`Name: ${user.name}`, 25, 118);
+    doc.text(`Email: ${user.email || 'N/A'}`, 25, 126);
+    
+    // Terms
+    doc.text('LEASE TERMS:', 20, 140);
+    doc.text(`Start Date: January 15, 2026`, 25, 148);
+    doc.text(`End Date: January 14, 2027`, 25, 156);
+    doc.text(`Monthly Rent: $${sampleProperty.rent}`, 25, 164);
+    doc.text(`Security Deposit: $${sampleProperty.securityDeposit}`, 25, 172);
+    
+    // Footer
+    doc.setFontSize(10);
+    doc.text(`Generated on ${new Date().toLocaleDateString()}`, 20, 280);
+    
+    // Save PDF
+    doc.save(`lease-contract-${Date.now()}.pdf`);
+  };
+
   const handleUpdateProfile = () => {
     onUpdateUser({ ...user, name, address, phone });
     setEditing(false);
@@ -706,42 +829,145 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       case 'lease':
         return (
           <div className="animate-fadeIn space-y-6">
-            <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm space-y-6">
-              <div className="space-y-2">
-                <h3 className="text-lg font-bold text-gray-900">Property Details</h3>
-                <div className="text-sm text-gray-600 grid grid-cols-2 gap-y-2">
-                  <span className="font-semibold text-gray-800">Address:</span> <span>123 Sunrise Valley Lane</span>
-                  <span className="font-semibold text-gray-800">Unit:</span> <span>#4 (Villa)</span>
-                  <span className="font-semibold text-gray-800">Type:</span> <span>Luxury Villa</span>
+            {/* Header */}
+            <div>
+              <h2 className="text-2xl font-extrabold text-gray-900">Lease Agreement</h2>
+              <p className="text-sm text-gray-500 mt-1">View your lease agreement and contract details</p>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              {/* Lease Information */}
+              <div className="p-6 space-y-6">
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-gray-900">
+                    <Calendar className="h-5 w-5 text-emerald-600" />
+                    <h4 className="font-bold">Lease Term</h4>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <p className="text-gray-500 font-medium">Lease Start</p>
+                      <p className="text-gray-900 font-semibold">Jan 15, 2026</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-500 font-medium">Lease End</p>
+                      <p className="text-gray-900 font-semibold">Jan 14, 2027</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-500 font-medium">Monthly Rent</p>
+                      <p className="text-gray-900 font-semibold text-lg">$1,200</p>
+                    </div>
+                    <div>
+                      <p className="text-gray-500 font-medium">Security Deposit</p>
+                      <p className="text-gray-900 font-semibold">$2,400</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Lease Agreement Actions */}
+                <div className="border-t border-gray-100 pt-6 space-y-3">
+                  <div className="flex items-center gap-2 text-gray-900">
+                    <CheckSquare className="h-5 w-5 text-emerald-600" />
+                    <h4 className="font-bold">Contract Status</h4>
+                  </div>
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-start gap-3">
+                    <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-emerald-900">Contract Signed</p>
+                      <p className="text-xs text-emerald-700 mt-0.5">Signed on January 15, 2026</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={handleViewContract}
+                      className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded-xl text-sm font-bold transition"
+                    >
+                      <FileText className="h-4 w-4" />
+                      View Contract
+                    </button>
+                    <button
+                      onClick={handleDownloadPDF}
+                      className="flex items-center justify-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-800 px-4 py-3 rounded-xl text-sm font-bold transition"
+                    >
+                      <Send className="h-4 w-4" />
+                      Download PDF
+                    </button>
+                  </div>
                 </div>
               </div>
-              
-              <div className="space-y-2 border-t pt-4">
-                <h3 className="text-lg font-bold text-gray-900">Lease Agreement</h3>
-                <p className="text-sm text-gray-600">Lease signed on January 15, 2026.</p>
-                <button 
-                  onClick={() => alert('Opening PDF viewer...')}
-                  className="block w-full bg-emerald-50 text-emerald-700 p-3 rounded-xl text-sm font-semibold border border-emerald-200"
-                >
-                  View Signed Contract
-                </button>
-                <button 
-                  onClick={() => alert('Downloading PDF...')}
-                  className="block w-full bg-slate-100 text-slate-800 p-3 rounded-xl text-sm font-semibold"
-                >
-                  Download PDF
-                </button>
+            </div>
+          </div>
+        );
+      case 'property':
+        return (
+          <div className="animate-fadeIn space-y-6">
+            {/* Header */}
+            <div>
+              <h2 className="text-2xl font-extrabold text-gray-900">My Property</h2>
+              <p className="text-sm text-gray-500 mt-1">View your rental property details and owner contact</p>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              {/* Property Header */}
+              <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 text-white p-6">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h3 className="text-xl font-bold">Luxury Villa</h3>
+                    <p className="text-emerald-100 text-sm mt-1">123 Sunrise Valley Lane, Beverly Hills</p>
+                  </div>
+                  <span className="inline-flex items-center gap-1 bg-white/20 backdrop-blur-sm px-3 py-1.5 rounded-full text-xs font-bold">
+                    <Building className="h-3 w-3" />
+                    Villa
+                  </span>
+                </div>
               </div>
 
-              <div className="space-y-2 border-t pt-4">
-                <h3 className="text-lg font-bold text-gray-900">Owner Contact</h3>
-                <p className="text-sm text-gray-600">Property Owner: Alex Johnson</p>
-                <button 
-                  onClick={() => alert('Opening chat with owner...')}
-                  className="block w-full bg-blue-600 text-white p-3 rounded-xl text-sm font-semibold"
-                >
-                  Message Property Owner
-                </button>
+              {/* Property Details */}
+              <div className="p-6 space-y-6">
+                {/* Owner Contact */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-gray-900">
+                    <User className="h-5 w-5 text-emerald-600" />
+                    <h4 className="font-bold">Property Owner</h4>
+                  </div>
+                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                    <p className="text-sm font-semibold text-blue-900">Alex Johnson</p>
+                    <p className="text-xs text-blue-700 mt-0.5">Available Monday - Friday, 9 AM - 5 PM</p>
+                  </div>
+                  <button
+                    onClick={() => alert('Opening chat with owner...')}
+                    className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-xl text-sm font-bold transition"
+                  >
+                    <MessageSquareText className="h-4 w-4" />
+                    Message Owner
+                  </button>
+                </div>
+
+                {/* Quick Actions */}
+                <div className="border-t border-gray-100 pt-6">
+                  <h4 className="font-bold text-gray-900 mb-3">Quick Actions</h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={() => onPayRent({
+                        propertyTitle: 'Luxury Villa',
+                        propertyLocation: '123 Sunrise Valley Lane, Beverly Hills',
+                        propertyImage: '/villa.png',
+                        amount: 1200.00,
+                        dueDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                      })}
+                      className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-xl text-sm font-semibold transition"
+                    >
+                      <CreditCard className="h-4 w-4" />
+                      Pay Rent
+                    </button>
+                    <button
+                      onClick={() => setActiveTab('maintenance')}
+                      className="flex items-center justify-center gap-2 bg-amber-600 hover:bg-amber-700 text-white px-4 py-2.5 rounded-xl text-sm font-semibold transition"
+                    >
+                      <Wrench className="h-4 w-4" />
+                      Report Issue
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -821,6 +1047,17 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
     setSidebarOpen(false);
   };
 
+  // If viewing lease contract, show LeaseContractPage instead of dashboard
+  if (viewingLeaseContract && currentLease) {
+    return (
+      <LeaseContractPage
+        lease={currentLease}
+        onBack={() => setViewingLeaseContract(false)}
+        onDownload={handleDownloadPDF}
+      />
+    );
+  }
+
   return (
     <div className="flex flex-col min-h-screen w-full font-sans bg-[#f8fafc]" id="renter-dashboard-container">
 
@@ -857,43 +1094,6 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
           <h2 className="text-base sm:text-lg font-bold text-slate-800 truncate">
             {sidebarItems.find(item => item.id === activeTab)?.label ?? 'Dashboard'}
           </h2>
-
-          {/* User dropdown */}
-          <div
-            className="relative flex items-center gap-2 bg-slate-100 hover:bg-slate-200 transition px-3 sm:px-4 py-2 rounded-full text-slate-700 font-semibold text-sm cursor-pointer select-none shrink-0 ml-3"
-            onClick={() => setShowDropdown(!showDropdown)}
-          >
-            <User className="h-4 w-4 text-slate-500" />
-            <span className="hidden sm:inline truncate max-w-[120px]">{user.name}</span>
-            <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
-
-            {showDropdown && (
-              <div className="absolute right-0 top-full mt-2 w-52 bg-white border border-gray-100 rounded-xl shadow-xl z-50 overflow-hidden">
-                <div className="px-4 py-3 border-b border-gray-50">
-                  <p className="text-xs font-semibold text-gray-700 truncate">{user.name}</p>
-                  <p className="text-xs text-gray-400 truncate">{user.email}</p>
-                </div>
-                <button
-                  onClick={handleAccountSettingsClick}
-                  className="block w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition"
-                >
-                  Account settings
-                </button>
-                <button
-                  onClick={onBrowseMore}
-                  className="block w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition"
-                >
-                  Browse Properties
-                </button>
-                <button
-                  onClick={onLogout}
-                  className="block w-full text-left px-4 py-3 text-sm text-red-600 font-semibold hover:bg-red-50 transition border-t border-gray-50"
-                >
-                  Sign Out
-                </button>
-              </div>
-            )}
-          </div>
         </header>
       </div>
 

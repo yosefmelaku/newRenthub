@@ -1,15 +1,12 @@
 import React, { useState } from 'react';
-import { Home, ShieldAlert, KeyRound, LogOut, Search, Building2, Settings, HelpCircle, ChevronDown } from 'lucide-react';
+import { Home, ShieldAlert, KeyRound, LogOut, Building2, Settings, HelpCircle, ChevronDown } from 'lucide-react';
 import type { AppUser } from '../types';
-import { AccountSwitcher } from './AccountSwitcher';
 
 
 interface NavbarProps {
   currentTab: 'explore' | 'renter-dashboard' | 'super-admin' | 'owner-dashboard';
   setCurrentTab: (tab: 'explore' | 'renter-dashboard' | 'super-admin' | 'owner-dashboard') => void;
   currentUser: AppUser | null;
-  globalSearchTerm: string;
-  setGlobalSearchTerm: (value: string) => void;
   onLoginClick: () => void;
   onLogout: () => void;
 }
@@ -18,8 +15,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   currentTab,
   setCurrentTab,
   currentUser,
-  globalSearchTerm,
-  setGlobalSearchTerm,
   onLoginClick,
   onLogout,
 }) => {
@@ -31,30 +26,26 @@ export const Navbar: React.FC<NavbarProps> = ({
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setCurrentTab('explore')}>
               {/* Premium geometric overlapping block logo to replace the old standard box */}
-              <div className="relative w-9 h-9 flex items-center justify-center shrink-0" id="nav-logo-box">
+              <div className="relative w-12 h-12 flex items-center justify-center shrink-0" id="nav-logo-box">
                 {/* Left deep blue roof block */}
-                <div className="absolute top-1 left-0.5 w-4.5 h-4.5 bg-[#1e40af] transform -skew-x-12 rounded-xs" />
+                <div className="absolute top-1 left-0.5 w-6 h-6 bg-[#1e40af] transform -skew-x-12 rounded-xs" />
                 {/* Right emerald green wall/roof block */}
-                <div className="absolute top-2 left-3.5 w-5 h-5 bg-[#059669] transform skew-x-12 rounded-xs border-2 border-white shadow-sm" />
+                <div className="absolute top-2 left-5 w-7 h-7 bg-[#059669] transform skew-x-12 rounded-xs border-2 border-white shadow-sm" />
                 {/* Central high-tech white cutout window */}
-                <div className="absolute bottom-2 left-3 w-1.5 h-1.5 bg-white rounded-full z-10" />
+                <div className="absolute bottom-3 left-4 w-2 h-2 bg-white rounded-full z-10" />
               </div>
               <div>
-                <span className="font-sans font-extrabold text-xl tracking-tight text-gray-900">
+                <span className="block font-sans font-extrabold text-2xl tracking-tight text-gray-900">
                   RentHub<span className="text-[#059669] font-bold">studio</span>
                 </span>
-                <span className="hidden sm:inline-block ml-2 text-xs bg-emerald-50 text-emerald-700 font-mono px-2 py-0.5 rounded-full border border-emerald-100">
+                <span className="hidden sm:inline-block mt-1 text-[10px] bg-emerald-50 text-emerald-700 font-mono px-2 py-0.5 rounded-full border border-emerald-100">
                   Secure
                 </span>
               </div>
             </div>
 
             <div className="flex items-center gap-2 md:hidden">
-              {currentUser ? (
-                <button type="button" onClick={onLogout} className="rounded-xl border border-gray-200 p-2 text-gray-600 cursor-pointer">
-                  <LogOut className="h-4 w-4" />
-                </button>
-              ) : (
+              {!currentUser && (
                 <button type="button" onClick={onLoginClick} className="rounded-xl bg-emerald-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-xs cursor-pointer hover:bg-emerald-500 transition-all">
                   Sign In
                 </button>
@@ -88,7 +79,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     : 'border-gray-200 bg-white text-gray-700 hover:text-gray-900 hover:bg-gray-50'
                 }`}
               >
-                My Bookings
+                Dashboard
               </button>
             )}
             {currentUser?.role === 'owner' && (
@@ -122,28 +113,15 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
 
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            {/* Centered search bar — takes remaining space, centered via auto margins */}
-            <div className="flex-1 flex justify-center">
-              <div className="relative w-full max-w-xl">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                <input
-                  type="text"
-                  value={globalSearchTerm}
-                  onChange={(event) => setGlobalSearchTerm(event.target.value)}
-                  placeholder="Search listings, city, or amenities"
-                  className="w-full rounded-xl border border-gray-200 bg-gray-50 py-2.5 pl-10 pr-3 text-sm text-gray-700 outline-none transition focus:border-emerald-500 focus:bg-white"
-                />
-              </div>
-            </div>
-
+          <div className="flex items-center justify-end">
             <div className="hidden md:flex items-center gap-3">
               {currentUser ? (
-                <AccountSwitcher
-                  currentUser={currentUser}
-                  onSwitchAccount={() => {}} // Handled internally by AccountSwitcher
-                  onLogout={onLogout}
-                />
+                <div className="flex items-center gap-2">
+                  <div className="text-right">
+                    <p className="text-xs font-bold text-gray-900">{currentUser.name}</p>
+                    <p className="text-[10px] text-gray-500">{currentUser.role}</p>
+                  </div>
+                </div>
               ) : (
                 <button
                   type="button"
@@ -178,7 +156,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               }`}
             >
               <KeyRound className="h-5 w-5" />
-              <span>Bookings</span>
+              <span>Dashboard</span>
             </button>
           )}
           {currentUser?.role === 'owner' && (

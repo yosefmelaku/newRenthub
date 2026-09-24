@@ -1,8 +1,7 @@
 import { z } from 'zod';
 
-/**
- * Validation schema for listing creation requests.
- */
+
+ 
 export const createListingSchema = {
   body: z.object({
     title: z.string({ message: 'Title is required' }).trim().min(3, 'Title must be at least 3 characters'),

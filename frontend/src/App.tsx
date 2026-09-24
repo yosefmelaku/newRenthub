@@ -28,7 +28,7 @@ import { recordRental, releaseRental } from './lib/ownerProperties';
 
 // All valid public paths — anything NOT in this list shows 404
 const VALID_PATHS = new Set([
-  '/', '/admin', '/superadmin', '/owner', '/tenant',
+  '/', '/admin', '/superadmin', '/owner', '/owner/settings', '/owner/help', '/tenant',
   '/dashboard', '/pricing', '/how-it-works', '/reviews',
   '/payment-redirect', '/payment-methods', '/payment-confirmation', '/payment-success',
 ]);
@@ -38,6 +38,8 @@ const PATH_MAP: Record<string, AppTab> = {
   '/admin':                '/admin',
   '/superadmin':           'super-admin',
   '/owner':                'owner-dashboard',
+  '/owner/settings':       'owner-dashboard',
+  '/owner/help':           'owner-dashboard',
   '/tenant':               'renter-dashboard',
   '/dashboard':            'renter-dashboard',
   '/pricing':              'pricing',
@@ -74,7 +76,8 @@ function resolveStartTab(user: AppUser | null): AppTab {
     return '404';
   }
 
-  // Admin routes - ALWAYS honor the URL, ignore localStorage
+  // Admin routes - ALWAYS show admin page regardless of current login
+  // This allows opening admin in a new tab even if logged in as tenant/owner
   if (path === '/admin' || path === '/superadmin') {
     console.log('✅ [resolveStartTab] Admin path detected, returning super-admin');
     return 'super-admin';
@@ -92,7 +95,7 @@ function resolveStartTab(user: AppUser | null): AppTab {
   return resolved;
 }
 
-// ── 404 page ──────────────────────────────────────────────────────────────────
+
 function NotFoundPage({ onGoHome }: { onGoHome: () => void }) {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-slate-950 text-white gap-6 p-8 text-center">
@@ -136,7 +139,10 @@ function AccessDenied({ onGoHome }: { onGoHome: () => void }) {
 export default function App() {
   // Persisted user — read first so resolveStartTab can use it
   const [currentUser, setCurrentUser] = useState<AppUser | null>(() => {
-    try { return JSON.parse(localStorage.getItem('currentUser') || 'null'); }
+    try {
+      const storedUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+      return storedUser?.token ? storedUser : null;
+    }
     catch { return null; }
   });
 
@@ -168,7 +174,9 @@ export default function App() {
       'explore':          '/',
     };
     const p = map[currentTab];
-    if (p && window.location.pathname !== p) window.history.replaceState({}, '', p);
+    const isOwnerSubroute = currentTab === 'owner-dashboard' &&
+      (window.location.pathname === '/owner/settings' || window.location.pathname === '/owner/help');
+    if (p && !isOwnerSubroute && window.location.pathname !== p) window.history.replaceState({}, '', p);
     localStorage.setItem('currentTab', currentTab);
   }, [currentTab]);
 
@@ -196,55 +204,14 @@ export default function App() {
     window.history.replaceState({}, '', '/');
   };
 
-  // ── Special case: Admin access while logged in as non-admin ────────────
-  // If user tries to access admin panel while logged in as tenant/owner,
-  // show a "Switch Account" screen to login as admin
-  if (currentUser && currentTab === 'super-admin') {
-    const userRole = String(currentUser.role).toLowerCase();
-    if (userRole !== 'superadmin') {
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-slate-950 px-4">
-          <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-8 shadow-2xl max-w-md w-full text-center space-y-6">
-            <div className="flex flex-col items-center gap-3">
-              <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-2xl">
-                <Lock className="h-10 w-10 text-amber-400" />
-              </div>
-              <h2 className="text-2xl font-bold text-white">Admin Access Required</h2>
-            </div>
-            <p className="text-slate-400 text-sm leading-relaxed">
-              You're currently logged in as <strong className="text-white">{currentUser.name}</strong> ({currentUser.role}).
-              <br /><br />
-              To access the Admin Panel, you need to logout and sign in with Super Admin credentials.
-            </p>
-            <div className="space-y-3">
-              <button
-                onClick={() => {
-                  handleLogout();
-                  // After logout, it will automatically show AdminLoginPage
-                }}
-                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl transition"
-              >
-                Logout & Sign In as Admin
-              </button>
-              <button
-                onClick={() => {
-                  setCurrentTab('explore');
-                  window.history.replaceState({}, '', '/');
-                }}
-                className="w-full border border-slate-700 text-slate-300 hover:text-white hover:border-slate-600 font-semibold py-3 rounded-xl transition"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      );
-    }
-  }
+  // REMOVED: Admin access blocking when logged in as tenant/owner
+  // Now you can open /admin in a new tab even if logged in as tenant/owner
+  // The admin page will show its own login screen
 
-  // ── Role guard ───────────────────────────────────────────────────────────
-  // If a logged-in user navigates to a tab they don't have access to, show 403
-  if (currentUser) {
+  // ── Role guard (DISABLED for admin) ──────────────────────────────────────
+  // Allow admin page to be accessed without role check
+  // Admin page itself will handle authentication
+  if (currentUser && currentTab !== 'super-admin') {
     const allowed = TAB_ROLES[currentTab];
     if (allowed) {
       const userRole = String(currentUser.role).toLowerCase();
@@ -459,8 +426,6 @@ export default function App() {
           currentTab={(['auth','role-selection','pricing','how-it-works','reviews'].includes(currentTab) ? 'explore' : currentTab) as any}
           setCurrentTab={handleTabChange}
           currentUser={currentUser}
-          globalSearchTerm={globalSearchTerm}
-          setGlobalSearchTerm={setGlobalSearchTerm}
           onLoginClick={() => handleTabChange('auth')}
           onLogout={handleLogout}
         />

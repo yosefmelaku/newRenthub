@@ -15,10 +15,12 @@ import {
   setPropertyValidation,
   getAllProperties,
   getRentalsMatrix,
+  getTenants,
 } from '../controllers/admin.controller';
 import { submitApplication, getOwnerApplications, getTenantApplications, updateApplicationStatus } from '../controllers/applications.controller';
 import { loadUserFromHeader, requireSuperadmin } from '../middleware/auth.middleware';
 import { signContract }                          from '../controllers/esign.controller';
+import { uploadPropertyImage, uploadMiddleware } from '../controllers/upload.controller';
 import prisma                                    from '../lib/prisma';
 
 // Reusable Zod input validation middleware and schemas
@@ -90,6 +92,9 @@ router.patch('/maintenance/:id',     loadUserFromHeader, async (req, res) => {
 });
 router.get('/tenant/my-rented-properties', loadUserFromHeader, getTenantRentedProperties);
 
+// ── Upload ────────────────────────────────────────────────────────────────────
+router.post('/upload/property-image', loadUserFromHeader, uploadMiddleware, uploadPropertyImage);
+
 // ── Properties ────────────────────────────────────────────────────────────────
 router.post(  '/properties',                  loadUserFromHeader, validate(createPropertySchema), createProperty);
 router.get(   '/properties/owner/:ownerId',   loadUserFromHeader, validate(ownerIdParamSchema), getOwnerProperties);
@@ -124,6 +129,7 @@ admin.patch( '/properties/:id/approve',    setPropertyValidation);
 admin.patch( '/properties/:id/reject',     setPropertyValidation);
 admin.get(   '/properties',                getAllProperties);
 admin.get(   '/rentals-matrix',            getRentalsMatrix);
+admin.get(   '/tenants',                   getTenants);
 
 router.use('/admin', admin);
 

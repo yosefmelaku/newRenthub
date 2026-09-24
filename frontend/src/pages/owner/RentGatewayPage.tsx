@@ -1,7 +1,11 @@
 import React, { useState } from 'react';
 import { 
   Bell, 
-  MoreVertical
+  MoreVertical,
+  X,
+  CheckCircle2,
+  Eye,
+  Send,
 } from 'lucide-react';
 
 // --- Types ---
@@ -36,6 +40,25 @@ const MetricCard = ({ title, value, color }: { title: string, value: string, col
 export const RentGatewayPage: React.FC = () => {
   const [autoInvoice, setAutoInvoice] = useState(true);
   const [lateFee, setLateFee] = useState(true);
+  const [leaseRows, setLeaseRows] = useState(leases);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [selectedLease, setSelectedLease] = useState<Lease | null>(null);
+  const [showPayouts, setShowPayouts] = useState(false);
+  const [notice, setNotice] = useState('');
+
+  const showNotice = (message: string) => {
+    setNotice(message);
+    setOpenMenuId(null);
+  };
+
+  const sendReminder = (lease: Lease) => {
+    showNotice(`Payment reminder sent to ${lease.tenant}.`);
+  };
+
+  const markAsPaid = (lease: Lease) => {
+    setLeaseRows(rows => rows.map(row => row.id === lease.id ? { ...row, status: 'Paid' } : row));
+    showNotice(`${lease.tenant}'s payment was marked as paid.`);
+  };
 
   return (
     <div className="p-8 bg-zinc-50 min-h-screen">
@@ -48,9 +71,24 @@ export const RentGatewayPage: React.FC = () => {
             <span className="font-semibold text-zinc-900">Stripe Connected</span>
           </div>
           <span className="text-zinc-500 text-sm">M&T Bank ****1234</span>
-          <button className="text-indigo-600 font-medium text-sm hover:text-indigo-800">Manage Payouts</button>
+          <button
+            type="button"
+            onClick={() => setShowPayouts(true)}
+            className="text-indigo-600 font-medium text-sm hover:text-indigo-800"
+          >
+            Manage Payouts
+          </button>
         </div>
       </div>
+
+      {notice && (
+        <div className="mb-6 flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800" role="status">
+          <span className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4" />{notice}</span>
+          <button type="button" onClick={() => setNotice('')} aria-label="Dismiss notification">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       {/* 2. Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -97,7 +135,7 @@ export const RentGatewayPage: React.FC = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-200">
-            {leases.map(l => (
+            {leaseRows.map(l => (
               <tr key={l.id} className="hover:bg-zinc-50/50">
                 <td className="px-6 py-4">
                   <div className="font-medium text-zinc-900">{l.tenant}</div>
@@ -111,15 +149,91 @@ export const RentGatewayPage: React.FC = () => {
                     {l.status}
                   </span>
                 </td>
-                <td className="px-6 py-4 flex items-center gap-2">
-                  <button className="text-indigo-600 hover:text-indigo-800"><Bell className="h-4 w-4" /></button>
-                  <button className="text-zinc-500 hover:text-zinc-700"><MoreVertical className="h-4 w-4" /></button>
+                <td className="relative px-6 py-4">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => sendReminder(l)}
+                      disabled={l.status === 'Paid'}
+                      title={l.status === 'Paid' ? 'Payment already received' : `Send reminder to ${l.tenant}`}
+                      aria-label={l.status === 'Paid' ? 'Payment already received' : `Send reminder to ${l.tenant}`}
+                      className="text-indigo-600 hover:text-indigo-800 disabled:cursor-not-allowed disabled:text-zinc-300"
+                    >
+                      <Bell className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOpenMenuId(openMenuId === l.id ? null : l.id)}
+                      title={`Actions for ${l.tenant}`}
+                      aria-label={`Actions for ${l.tenant}`}
+                      aria-expanded={openMenuId === l.id}
+                      className="text-zinc-500 hover:text-zinc-700"
+                    >
+                      <MoreVertical className="h-4 w-4" />
+                    </button>
+                  </div>
+                  {openMenuId === l.id && (
+                    <div className="absolute right-6 top-12 z-10 w-44 rounded-lg border border-zinc-200 bg-white py-1 shadow-lg">
+                      <button type="button" onClick={() => { setSelectedLease(l); setOpenMenuId(null); }} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50">
+                        <Eye className="h-4 w-4" /> View details
+                      </button>
+                      {l.status !== 'Paid' && (
+                        <>
+                          <button type="button" onClick={() => sendReminder(l)} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50">
+                            <Send className="h-4 w-4" /> Send reminder
+                          </button>
+                          <button type="button" onClick={() => markAsPaid(l)} className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-zinc-700 hover:bg-zinc-50">
+                            <CheckCircle2 className="h-4 w-4" /> Mark as paid
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {selectedLease && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-900/40 p-4" role="dialog" aria-modal="true" aria-labelledby="lease-details-title">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <div className="mb-5 flex items-start justify-between">
+              <div>
+                <h2 id="lease-details-title" className="text-lg font-bold text-zinc-900">Payment details</h2>
+                <p className="text-sm text-zinc-500">{selectedLease.tenant} · {selectedLease.property}</p>
+              </div>
+              <button type="button" onClick={() => setSelectedLease(null)} aria-label="Close payment details" className="text-zinc-400 hover:text-zinc-700">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <dl className="space-y-3 text-sm">
+              <div className="flex justify-between"><dt className="text-zinc-500">Tenant</dt><dd className="font-medium text-zinc-900">{selectedLease.email}</dd></div>
+              <div className="flex justify-between"><dt className="text-zinc-500">Monthly rent</dt><dd className="font-medium text-zinc-900">${selectedLease.amount.toLocaleString()}</dd></div>
+              <div className="flex justify-between"><dt className="text-zinc-500">Due date</dt><dd className="font-medium text-zinc-900">{selectedLease.dueDate}</dd></div>
+              <div className="flex justify-between"><dt className="text-zinc-500">Status</dt><dd className="font-medium text-zinc-900">{selectedLease.status}</dd></div>
+            </dl>
+          </div>
+        </div>
+      )}
+
+      {showPayouts && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-900/40 p-4" role="dialog" aria-modal="true" aria-labelledby="payouts-title">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 id="payouts-title" className="text-lg font-bold text-zinc-900">Payout settings</h2>
+              <button type="button" onClick={() => setShowPayouts(false)} aria-label="Close payout settings" className="text-zinc-400 hover:text-zinc-700">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <p className="text-sm leading-6 text-zinc-600">Your connected payout account is <strong>M&T Bank ****1234</strong>. Payouts are deposited automatically after successful rent collection.</p>
+            <button type="button" onClick={() => { setShowPayouts(false); showNotice('Payout settings saved.'); }} className="mt-6 w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700">
+              Done
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

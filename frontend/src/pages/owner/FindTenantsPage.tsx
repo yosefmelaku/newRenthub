@@ -534,9 +534,10 @@ const ApplicantDrawer: React.FC<DrawerProps> = ({ applicant: a, onClose, onOpenP
 
 interface FindTenantsPageProps {
   onNavigateToESign?: (applicant: Applicant) => void;
+  onPostNewListing?: () => void;
 }
 
-export const FindTenantsPage: React.FC<FindTenantsPageProps> = ({ onNavigateToESign }) => {
+export const FindTenantsPage: React.FC<FindTenantsPageProps> = ({ onNavigateToESign, onPostNewListing }) => {
 
   const [activeFilter,      setActiveFilter]      = useState<ActiveFilter>('all');
   const [searchQuery,       setSearchQuery]        = useState('');
@@ -601,7 +602,11 @@ export const FindTenantsPage: React.FC<FindTenantsPageProps> = ({ onNavigateToES
           <h1 className="text-2xl sm:text-3xl font-bold text-zinc-900">Find Tenants & Tenant Screening</h1>
           <p className="text-zinc-500 mt-1 text-sm">Manage applications, screen tenants, and collect deposits.</p>
         </div>
-        <button className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold text-sm transition shadow-sm">
+        <button
+          type="button"
+          onClick={onPostNewListing}
+          className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold text-sm transition shadow-sm"
+        >
           <Plus className="h-4 w-4" /> Post New Listing
         </button>
       </div>

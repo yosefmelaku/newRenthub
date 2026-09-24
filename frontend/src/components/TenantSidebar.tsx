@@ -10,6 +10,7 @@ import {
   Home,
   LogOut,
   X,
+  FileText,
 } from 'lucide-react';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -22,7 +23,8 @@ export interface TenantNavItem {
 
 export const TENANT_NAV_ITEMS: TenantNavItem[] = [
   { id: 'dashboard',   label: 'Dashboard',              icon: <LayoutDashboard  className="h-5 w-5" /> },
-  { id: 'lease',       label: 'My Lease & Property',    icon: <Building2        className="h-5 w-5" /> },
+  { id: 'lease',       label: 'Lease Agreement',        icon: <FileText         className="h-5 w-5" /> },
+  { id: 'property',    label: 'My Property',            icon: <Building2        className="h-5 w-5" /> },
   { id: 'payments',    label: 'Payments & Billing',     icon: <CreditCard       className="h-5 w-5" /> },
   { id: 'maintenance', label: 'Maintenance Requests',   icon: <Wrench           className="h-5 w-5" /> },
   { id: 'inbox',       label: 'Inbox & Notifications',  icon: <MessageSquareText className="h-5 w-5" /> },

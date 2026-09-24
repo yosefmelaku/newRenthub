@@ -25,10 +25,13 @@ export const UserDirectory: React.FC = () => {
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      console.log('🔍 [UserDirectory] Fetching users...');
       const data = await fetchClassifiedUsers();
+      console.log('✅ [UserDirectory] Received users:', data);
+      console.log('📊 [UserDirectory] User count:', data.users?.length);
       setUsers(data.users ?? []);
     } catch (e) {
-      console.error(e);
+      console.error('❌ [UserDirectory] Error fetching users:', e);
     } finally {
       setLoading(false);
     }

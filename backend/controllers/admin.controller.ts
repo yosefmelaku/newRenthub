@@ -297,3 +297,60 @@ export const getRentalsMatrix = async (_req: Request, res: Response) => {
     return res.status(500).json({ error: 'Internal server error' });
   }
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/admin/tenants
+// Simplified tenant directory with active leases and property information.
+// ─────────────────────────────────────────────────────────────────────────────
+export const getTenants = async (_req: Request, res: Response) => {
+  try {
+    const tenants = await prisma.user.findMany({
+      where: { role: 'TENANT' },
+      include: {
+        leases: {
+          where: { status: 'ACTIVE' },
+          include: {
+            property: {
+              select: {
+                id: true,
+                title: true,
+                address: true,
+                city: true,
+                category: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { created_at: 'desc' },
+    });
+
+    return res.status(200).json({
+      count: tenants.length,
+      tenants: tenants.map((tenant) => ({
+        id: tenant.id,
+        fullName: tenant.full_name,
+        email: tenant.email,
+        phone: tenant.phone,
+        isActive: tenant.is_active,
+        createdAt: tenant.created_at,
+        activeLeases: tenant.leases.map((lease) => ({
+          leaseId: lease.id,
+          startDate: lease.start_date,
+          endDate: lease.end_date,
+          monthlyRent: lease.monthly_rent,
+          property: {
+            id: lease.property.id,
+            title: lease.property.title,
+            address: lease.property.address,
+            city: lease.property.city,
+            category: lease.property.category,
+          },
+        })),
+      })),
+    });
+  } catch (err) {
+    console.error('[getTenants]', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+};
